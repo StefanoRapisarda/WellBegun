@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
 from log_input_panels.models.actor import Actor
-from log_input_panels.models.learning_track import LearningTrack
 from log_input_panels.models.log import Activity, Log
 from log_input_panels.models.project import Project
+from log_input_panels.models.plan import Plan
 from log_input_panels.models.reading_list import ReadingList
 from log_input_panels.models.source import Source
 from log_input_panels.models.tag import Tag
@@ -18,7 +18,7 @@ def get_active_context(db: Session) -> dict:
         "sources": db.query(Source).filter(Source.is_active.is_(True)).all(),
         "actors": db.query(Actor).filter(Actor.is_active.is_(True)).all(),
         "reading_lists": db.query(ReadingList).filter(ReadingList.is_active.is_(True)).all(),
-        "learning_tracks": db.query(LearningTrack).filter(LearningTrack.is_active.is_(True)).all(),
+        "plans": db.query(Plan).filter(Plan.is_active.is_(True)).all(),
     }
 
 
@@ -36,7 +36,7 @@ def attach_active_context_tags(db: Session, target_type: str, target_id: int) ->
         ("source", [(s.id, "source") for s in active["sources"]]),
         ("actor", [(a.id, "actor") for a in active["actors"]]),
         ("reading_list", [(r.id, "reading_list") for r in active["reading_lists"]]),
-        ("learning_track", [(lt.id, "learning_track") for lt in active["learning_tracks"]]),
+        ("plan", [(p.id, "plan") for p in active["plans"]]),
     ]
 
     for entity_type, items in entity_specs:

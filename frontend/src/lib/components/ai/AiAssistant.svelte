@@ -363,7 +363,7 @@ Or just mention a project/activity name and I'll try to activate it!`;
 
 		// Panel visibility - flexible matching
 		const panelNames = ['project', 'projects', 'note', 'notes', 'log', 'logs', 'activity', 'activities',
-			'source', 'sources', 'actor', 'actors', 'reading', 'readinglist', 'learning', 'learningtrack', 'wildtag', 'tag', 'tags'];
+			'source', 'sources', 'actor', 'actors', 'reading', 'readinglist', 'plan', 'plans', 'wildtag', 'tag', 'tags'];
 
 		for (const panel of panelNames) {
 			if (lower.includes(panel)) {
@@ -376,7 +376,7 @@ Or just mention a project/activity name and I'll try to activate it!`;
 				if (panel === 'sources') panelId = 'source';
 				if (panel === 'actors') panelId = 'actor';
 				if (panel === 'reading') panelId = 'readinglist';
-				if (panel === 'learning') panelId = 'learningtrack';
+				if (panel === 'plans') panelId = 'plan';
 				if (panel === 'tag' || panel === 'tags') panelId = 'wildtag';
 
 				if (lower.includes('show') || lower.includes('open') || lower.includes('display')) {

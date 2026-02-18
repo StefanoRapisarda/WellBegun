@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { Tag, Activity } from '$lib/types';
 	import { activities, loadActivities } from '$lib/stores/activities';
+	import { loadPlans } from '$lib/stores/plans';
 	import { tags, loadTags, entityTagsVersion } from '$lib/stores/tags';
 	import { projects } from '$lib/stores/projects';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, isEntitySourceOfFilterTag, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
-	import { getLastUsedTags, setLastUsedTags } from '$lib/stores/lastUsedTags';
+	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { deleteActivity, activateActivity, deactivateActivity, archiveActivity } from '$lib/api/activities';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
@@ -70,7 +71,7 @@
 
 	async function handleDelete(id: number) {
 		await deleteActivity(id);
-		await Promise.all([loadActivities(), loadTags()]);
+		await Promise.all([loadActivities(), loadTags(), loadPlans()]);
 		confirmDelete = null;
 	}
 
@@ -114,20 +115,7 @@
 			(t.entity_type === 'activity' && t.entity_id && activeActivityIds.includes(t.entity_id))
 		);
 
-		// Also get last-used tags (filtering out inactive ones)
-		const activeProjectsList = $projects.filter(p => p.is_active);
-		const activeActivitiesList = $activities.filter(a => a.is_active);
-		const lastUsed = getLastUsedTags('activity', activeProjectsList, activeActivitiesList);
-
-		// Combine and deduplicate
-		const allTags = [...activeEntityTags];
-		for (const tag of lastUsed) {
-			if (!allTags.some(t => t.id === tag.id)) {
-				allTags.push(tag);
-			}
-		}
-
-		for (const tag of allTags) {
+		for (const tag of activeEntityTags) {
 			try {
 				await attachTag(tag.id, 'activity', activityId);
 			} catch (e) {
@@ -135,7 +123,7 @@
 			}
 		}
 
-		if (allTags.length > 0) {
+		if (activeEntityTags.length > 0) {
 			entityTags[activityId] = await getEntityTags('activity', activityId);
 		}
 	}

@@ -11,84 +11,68 @@ ENTITY_TYPES = [
     "source",
     "actor",
     "reading_list",
-    "learning_track",
+    "plan",
 ]
 
-# All 64 (source_type, target_type) pairs → default predicate verb.
-# Includes self-type pairs (e.g. project→project).
+# Meaningful (source_type, target_type) pairs → default predicate verb.
+# Only pairs with clear, natural relationships are listed here.
+# Unlisted pairs fall back to "related to" via get_structural_predicate().
+# Convention: lowercase verb phrases, third-person where natural.
+# Reads as "subject [predicate] object".
 STRUCTURAL_PREDICATES: dict[tuple[str, str], str] = {
-    # project →
-    ("project", "project"): "HAS_SUBPROJECT",
-    ("project", "activity"): "includes",
-    ("project", "note"): "produces",
-    ("project", "log"): "generates",
-    ("project", "source"): "uses",
-    ("project", "reading_list"): "references",
-    ("project", "learning_track"): "follows",
+    # ── project ──
+    ("project", "project"): "related to",
+    ("project", "activity"): "contains",
+    ("project", "note"): "contains",
+    ("project", "log"): "contains",
+    ("project", "source"): "references",
     ("project", "actor"): "involves",
-    # activity →
-    ("activity", "project"): "belong to",
-    ("activity", "activity"): "HAS_SUBACTIVITY",
-    ("activity", "note"): "produce",
-    ("activity", "log"): "generate",
-    ("activity", "source"): "use",
-    ("activity", "reading_list"): "reference",
-    ("activity", "learning_track"): "support",
-    ("activity", "actor"): "involve",
-    # note →
-    ("note", "project"): "belong to",
-    ("note", "activity"): "belong to",
-    ("note", "note"): "LINKS_TO",
-    ("note", "log"): "document",
-    ("note", "source"): "cite",
-    ("note", "reading_list"): "reference",
-    ("note", "learning_track"): "support",
-    ("note", "actor"): "mention",
-    # log →
-    ("log", "project"): "belong to",
-    ("log", "activity"): "belong to",
-    ("log", "note"): "reference",
-    ("log", "log"): "CONTINUES",
-    ("log", "source"): "cite",
-    ("log", "reading_list"): "reference",
-    ("log", "learning_track"): "support",
-    ("log", "actor"): "mention",
-    # source →
-    ("source", "project"): "inform",
-    ("source", "activity"): "inform",
-    ("source", "note"): "inspire",
-    ("source", "log"): "inspire",
-    ("source", "source"): "RELATED_SOURCE",
-    ("source", "reading_list"): "appear in",
-    ("source", "learning_track"): "appear in",
+    ("project", "plan"): "contains",
+    # ── activity ──
+    ("activity", "project"): "belongs to",
+    ("activity", "activity"): "related to",
+    ("activity", "note"): "contains",
+    ("activity", "log"): "contains",
+    ("activity", "source"): "consults",
+    ("activity", "actor"): "assigned to",
+    ("activity", "plan"): "belongs to",
+    # ── note ──
+    ("note", "project"): "belongs to",
+    ("note", "activity"): "documents",
+    ("note", "note"): "links to",
+    ("note", "log"): "references",
+    ("note", "source"): "cites",
+    ("note", "actor"): "mentions",
+    ("note", "plan"): "informs",
+    # ── log ──
+    ("log", "project"): "belongs to",
+    ("log", "activity"): "records",
+    ("log", "note"): "references",
+    ("log", "log"): "related to",
+    ("log", "source"): "cites",
+    ("log", "actor"): "mentions",
+    ("log", "plan"): "reports on",
+    # ── source ──
+    ("source", "source"): "related to",
     ("source", "actor"): "authored by",
-    # actor →
-    ("actor", "project"): "participate in",
-    ("actor", "activity"): "participate in",
-    ("actor", "note"): "author",
-    ("actor", "log"): "author",
-    ("actor", "source"): "create",
-    ("actor", "actor"): "COLLABORATES_WITH",
-    ("actor", "reading_list"): "curate",
-    ("actor", "learning_track"): "mentor",
-    # reading_list →
-    ("reading_list", "project"): "support",
-    ("reading_list", "activity"): "support",
-    ("reading_list", "note"): "collect",
-    ("reading_list", "log"): "collect",
-    ("reading_list", "source"): "contain",
-    ("reading_list", "actor"): "curated by",
-    ("reading_list", "reading_list"): "RELATED_LIST",
-    ("reading_list", "learning_track"): "feed",
-    # learning_track →
-    ("learning_track", "project"): "support",
-    ("learning_track", "activity"): "support",
-    ("learning_track", "note"): "produce",
-    ("learning_track", "log"): "produce",
-    ("learning_track", "source"): "contain",
-    ("learning_track", "actor"): "mentored by",
-    ("learning_track", "reading_list"): "include",
-    ("learning_track", "learning_track"): "PREREQUISITE_OF",
+    ("source", "reading_list"): "appears in",
+    # ── actor ──
+    ("actor", "project"): "contributes to",
+    ("actor", "activity"): "performs",
+    ("actor", "note"): "creates",
+    ("actor", "log"): "creates",
+    ("actor", "source"): "creates",
+    ("actor", "actor"): "collaborates with",
+    ("actor", "reading_list"): "curates",
+    ("actor", "plan"): "owns",
+    # ── reading_list ──
+    ("reading_list", "source"): "contains",
+    ("reading_list", "reading_list"): "related to",
+    # ── plan ──
+    ("plan", "project"): "targets",
+    ("plan", "activity"): "schedules",
+    ("plan", "actor"): "assigned to",
+    ("plan", "plan"): "related to",
 }
 
 SEMANTIC_RELATIONS: dict[str, list[dict[str, str]]] = {

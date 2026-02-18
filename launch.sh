@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_DIR="/Users/stefano.rapisarda/StefanoHome/Projects/Programming/Note_Taking_App/Playground/claude_development/log_input_panels"
+APP_DIR="/Users/stefano.rapisarda/StefanoHome/Projects/Programming/WellBegun"
 LOG_DIR="/tmp/wellbegun"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173

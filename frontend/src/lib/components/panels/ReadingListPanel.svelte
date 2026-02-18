@@ -165,7 +165,7 @@
 				{#if entityTags[list.id]?.length}
 					<div class="tag-badges">
 						{#each entityTags[list.id] as tag (tag.id)}
-							<TagBadge {tag} />
+							<TagBadge {tag} removable onRemove={() => handleDetach(list.id, tag)} />
 						{/each}
 					</div>
 				{/if}

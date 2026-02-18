@@ -4,7 +4,7 @@
 	import { tags, loadTags, entityTagsVersion } from '$lib/stores/tags';
 	import { activities } from '$lib/stores/activities';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, isEntitySourceOfFilterTag, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
-	import { getLastUsedTags, setLastUsedTags } from '$lib/stores/lastUsedTags';
+	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { deleteProject, activateProject, deactivateProject, archiveProject } from '$lib/api/projects';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
@@ -118,20 +118,7 @@
 			(t.entity_type === 'activity' && t.entity_id && activeActivityIds.includes(t.entity_id))
 		);
 
-		// Also get last-used tags (filtering out inactive ones)
-		const activeProjectsList = $projects.filter(p => p.is_active);
-		const activeActivitiesList = $activities.filter(a => a.is_active);
-		const lastUsed = getLastUsedTags('project', activeProjectsList, activeActivitiesList);
-
-		// Combine and deduplicate
-		const allTags = [...activeEntityTags];
-		for (const tag of lastUsed) {
-			if (!allTags.some(t => t.id === tag.id)) {
-				allTags.push(tag);
-			}
-		}
-
-		for (const tag of allTags) {
+		for (const tag of activeEntityTags) {
 			try {
 				await attachTag(tag.id, 'project', projectId);
 			} catch (e) {
@@ -139,7 +126,7 @@
 			}
 		}
 
-		if (allTags.length > 0) {
+		if (activeEntityTags.length > 0) {
 			entityTags[projectId] = await getEntityTags('project', projectId);
 		}
 	}

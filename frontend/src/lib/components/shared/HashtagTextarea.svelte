@@ -2,10 +2,11 @@
 	import { type Tag, tagCategoryPrefix } from '$lib/types';
 	import { searchTagsStore } from '$lib/stores/tags';
 
-	let { value = $bindable(''), rows = 4, placeholder = '' }: {
+	let { value = $bindable(''), rows = 4, placeholder = '', autoSize = false }: {
 		value: string;
 		rows?: number;
 		placeholder?: string;
+		autoSize?: boolean;
 	} = $props();
 
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -117,6 +118,21 @@
 	function handleBlur() {
 		setTimeout(() => { showDropdown = false; }, 200);
 	}
+
+	function resizeTextarea() {
+		if (!autoSize || !textareaEl) return;
+		const maxH = window.innerHeight * 0.45;
+		textareaEl.style.height = 'auto';
+		textareaEl.style.height = Math.min(textareaEl.scrollHeight, maxH) + 'px';
+	}
+
+	$effect(() => {
+		if (autoSize && textareaEl) {
+			// Track value changes to trigger resize
+			void value;
+			resizeTextarea();
+		}
+	});
 </script>
 
 <div class="hashtag-textarea-wrapper">
@@ -125,10 +141,11 @@
 		bind:value
 		{rows}
 		{placeholder}
-		oninput={handleInput}
+		oninput={() => { handleInput(); resizeTextarea(); }}
 		onkeydown={handleKeydown}
 		onblur={handleBlur}
 		class="hashtag-textarea"
+		style={autoSize ? 'overflow-y: auto;' : ''}
 	></textarea>
 	{#if showDropdown}
 		<ul class="suggestions" style="top: {dropdownTop}px; left: {dropdownLeft}px;">

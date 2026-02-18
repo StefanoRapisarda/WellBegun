@@ -17,6 +17,7 @@ export interface SearchParams {
 	end_date?: string;
 	tag_ids?: number[];
 	tag_mode?: 'or' | 'and';
+	include_archived?: boolean;
 	limit?: number;
 	offset?: number;
 }
@@ -29,6 +30,7 @@ export async function searchEntities(params: SearchParams): Promise<SearchResult
 	if (params.end_date) searchParams.set('end_date', params.end_date);
 	if (params.tag_ids?.length) searchParams.set('tag_ids', params.tag_ids.join(','));
 	if (params.tag_mode) searchParams.set('tag_mode', params.tag_mode);
+	if (params.include_archived) searchParams.set('include_archived', 'true');
 	if (params.limit) searchParams.set('limit', String(params.limit));
 	if (params.offset) searchParams.set('offset', String(params.offset));
 

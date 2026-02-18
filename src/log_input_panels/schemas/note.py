@@ -6,7 +6,6 @@ from pydantic import BaseModel
 class NoteCreate(BaseModel):
     title: str
     content: str | None = None
-    skip_context_tags: bool = False
 
 
 class NoteUpdate(BaseModel):

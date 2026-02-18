@@ -33,6 +33,12 @@ def tags_by_category(category: str, db: Session = Depends(get_db)):
     return tag_service.get_tags_by_category(db, category)
 
 
+@router.get("/usage-counts")
+def get_tag_usage_counts(db: Session = Depends(get_db)):
+    """Return {tag_id: usage_count} for tags with at least one entity attachment."""
+    return tag_service.get_tag_usage_counts(db)
+
+
 @router.get("/entity-tags-bulk")
 def get_all_entity_tags_bulk(db: Session = Depends(get_db)):
     """Return all entity tags grouped by 'type:id' key in a single request."""
@@ -52,7 +58,7 @@ def get_tag_links(entity_type: str, entity_id: int, db: Session = Depends(get_db
 
 @router.post("/wild", response_model=TagOut)
 def create_wild_tag(data: WildTagCreate, db: Session = Depends(get_db)):
-    tag = tag_service.create_wild_tag(db, data.name, data.description, data.category)
+    tag = tag_service.create_wild_tag(db, data.name, data.description, data.category, color=data.color)
     db.commit()
     db.refresh(tag)
     return tag
@@ -60,7 +66,7 @@ def create_wild_tag(data: WildTagCreate, db: Session = Depends(get_db)):
 
 @router.put("/wild/{tag_id}", response_model=TagOut)
 def update_wild_tag(tag_id: int, data: WildTagUpdate, db: Session = Depends(get_db)):
-    tag = tag_service.update_wild_tag(db, tag_id, data.description, data.category)
+    tag = tag_service.update_wild_tag(db, tag_id, data.description, data.category, color=data.color)
     if not tag:
         raise HTTPException(status_code=404, detail="Tag not found")
     db.commit()

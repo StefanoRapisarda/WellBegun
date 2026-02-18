@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { KnowledgeTriple, BoardNode } from '$lib/types';
-	import { structuralPredicates, semanticRelations, loadPredicates } from '$lib/stores/predicates';
+	import { structuralPredicates, semanticRelations, customPredicates, loadPredicates } from '$lib/stores/predicates';
 	import { onMount } from 'svelte';
 
 	let {
@@ -9,12 +9,6 @@
 		cardWidth = 150,
 		cardHeight = 60,
 		collapsedNodes,
-		editingTripleId = null,
-		editingPredicate = '',
-		onPredicateDblClick,
-		onPredicateChange,
-		onPredicateBlur,
-		onPredicateKeydown,
 		onConnectionSwap,
 		onConnectionDelete,
 		onPredicateSelect
@@ -24,12 +18,6 @@
 		cardWidth?: number;
 		cardHeight?: number;
 		collapsedNodes: Set<string>;
-		editingTripleId?: number | null;
-		editingPredicate?: string;
-		onPredicateDblClick: (tripleId: number, currentPredicate: string) => void;
-		onPredicateChange: (value: string) => void;
-		onPredicateBlur: () => void;
-		onPredicateKeydown: (e: KeyboardEvent) => void;
 		onConnectionSwap: (tripleId: number) => void;
 		onConnectionDelete: (tripleId: number) => void;
 		onPredicateSelect?: (tripleId: number, predicate: string) => void;
@@ -50,6 +38,9 @@
 			for (const pred of predicates) {
 				results.push({ label: pred.forward, group: category });
 			}
+		}
+		for (const cp of $customPredicates) {
+			results.push({ label: cp.forward, group: cp.category });
 		}
 		return results;
 	}
@@ -212,32 +203,13 @@
 			onclick={() => onConnectionSwap(conn.triple.id)}
 		/>
 
-		{#if editingTripleId === conn.triple.id}
-			<!-- Inline predicate editor -->
-			<foreignObject
-				x={conn.labelX - 60}
-				y={conn.labelY - 12}
-				width="120"
-				height="24"
-			>
-				<input
-					type="text"
-					class="predicate-input"
-					value={editingPredicate}
-					oninput={(e) => onPredicateChange((e.target as HTMLInputElement).value)}
-					onblur={onPredicateBlur}
-					onkeydown={onPredicateKeydown}
-					autofocus
-				/>
-			</foreignObject>
-		{:else}
-			<!-- Predicate label: double-click to edit text -->
+		<!-- Predicate label: double-click to open dropdown -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<g
 				class="predicate-group"
 				transform="translate({conn.labelX},{conn.labelY})"
-				ondblclick={() => onPredicateDblClick(conn.triple.id, conn.triple.predicate)}
+				ondblclick={(e: MouseEvent) => togglePredicateMenu(conn.triple.id, e)}
 			>
 				<rect
 					x={-(conn.triple.predicate.length * 3.5 + 12)}
@@ -307,7 +279,6 @@
 					</div>
 				</foreignObject>
 			{/if}
-		{/if}
 	{/each}
 </svg>
 
@@ -336,18 +307,6 @@
 	}
 	.delete-btn:hover {
 		fill: #ef4444;
-	}
-	.predicate-input {
-		width: 100%;
-		height: 100%;
-		border: 1px solid #94a3b8;
-		border-radius: 4px;
-		padding: 2px 6px;
-		font-size: 11px;
-		text-align: center;
-		outline: none;
-		background: white;
-		box-sizing: border-box;
 	}
 	.dropdown-btn {
 		font-size: 10px;

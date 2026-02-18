@@ -31,8 +31,6 @@ def create(
     db.add(activity)
     db.flush()
     create_entity_tag(db, title, "activity", "activity", activity.id)
-    from log_input_panels.services.active_context_service import attach_active_context_tags
-    attach_active_context_tags(db, "activity", activity.id)
     db.commit()
     db.refresh(activity)
     return activity
@@ -56,6 +54,9 @@ def delete(db: Session, activity_id: int) -> bool:
     activity = get_by_id(db, activity_id)
     if not activity:
         return False
+    # Remove any plan_items referencing this activity
+    from log_input_panels.models.plan import PlanItem
+    db.query(PlanItem).filter(PlanItem.activity_id == activity_id).delete()
     delete_entity_tag(db, "activity", activity_id)
     delete_entity_graph_data(db, "activity", activity_id)
     db.delete(activity)

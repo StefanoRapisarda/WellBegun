@@ -12,8 +12,7 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
-		learning_track: '#7b6b8d'
+		reading_list: '#5f9ea0'
 	};
 
 	let { entityType, entityId }: { entityType: string; entityId: number } = $props();

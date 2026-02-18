@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from sqlalchemy.orm import Session
 
 from log_input_panels.models.tag import EntityTag, Tag
@@ -65,6 +65,16 @@ def search_tags(db: Session, query: str, limit: int = 20) -> list[Tag]:
     )
 
 
+def get_tag_usage_counts(db: Session) -> dict[int, int]:
+    """Return {tag_id: count} for all tags that have at least one entity attachment."""
+    rows = (
+        db.query(EntityTag.tag_id, func.count(EntityTag.id))
+        .group_by(EntityTag.tag_id)
+        .all()
+    )
+    return {tag_id: count for tag_id, count in rows}
+
+
 def get_all_tags(db: Session) -> list[Tag]:
     return db.query(Tag).order_by(Tag.name).all()
 
@@ -86,9 +96,12 @@ def _target_exists(db: Session, target_type: str, target_id: int) -> bool:
     from log_input_panels.models.source import Source
     from log_input_panels.models.actor import Actor
 
+    from log_input_panels.models.plan import Plan
+
     model_map = {
         "note": Note, "project": Project, "log": Log,
         "activity": Activity, "source": Source, "actor": Actor,
+        "plan": Plan,
     }
     model = model_map.get(target_type)
     if model is None:
@@ -206,6 +219,7 @@ def get_all_entity_tags_bulk(db: Session) -> dict[str, list[dict]]:
             "name": tag.name,
             "category": tag.category,
             "full_tag": tag.full_tag,
+            "color": tag.color,
             "entity_type": tag.entity_type,
             "entity_id": tag.entity_id,
             "created_at": tag.created_at.isoformat() if tag.created_at else None,
@@ -280,6 +294,7 @@ def create_wild_tag(
     description: str | None = None,
     category: str = "wild",
     is_system: bool = False,
+    color: str | None = None,
 ) -> Tag:
     now = datetime.utcnow()
     full_tag = f"#{category}: {name}-{now.isoformat()}"
@@ -288,6 +303,7 @@ def create_wild_tag(
         category=category,
         full_tag=full_tag,
         description=description,
+        color=color,
         entity_type=None,
         entity_id=None,
         is_system=is_system,
@@ -303,6 +319,7 @@ def update_wild_tag(
     tag_id: int,
     description: str | None = None,
     category: str | None = None,
+    color: str | None = ...,
 ) -> Tag | None:
     tag = db.query(Tag).filter(Tag.id == tag_id, Tag.entity_id.is_(None)).first()
     if not tag:
@@ -313,6 +330,8 @@ def update_wild_tag(
         tag.category = category
         # Update full_tag to reflect new category
         tag.full_tag = f"#{category}: {tag.name}-{tag.created_at.isoformat()}"
+    if color is not ...:
+        tag.color = color
     db.flush()
     return tag
 
@@ -334,7 +353,9 @@ def move_category_tags(db: Session, from_category: str, to_category: str) -> int
 
 
 def delete_wild_tag(db: Session, tag_id: int) -> bool:
-    tag = db.query(Tag).filter(Tag.id == tag_id, Tag.category == "wild").first()
+    tag = db.query(Tag).filter(
+        Tag.id == tag_id, Tag.entity_id.is_(None), Tag.is_system == False
+    ).first()
     if not tag:
         return False
     db.execute(delete(EntityTag).where(EntityTag.tag_id == tag.id))
@@ -372,17 +393,94 @@ def sync_inline_hashtags(
     return attached_tags
 
 
+def _deduplicate_tags(db: Session) -> None:
+    """Remove duplicate standalone tags, keeping the one with the most attachments."""
+    standalone = (
+        db.query(Tag)
+        .filter(Tag.entity_id.is_(None))
+        .all()
+    )
+    # Group by (category, name)
+    groups: dict[tuple[str, str], list[Tag]] = {}
+    for tag in standalone:
+        key = (tag.category, tag.name)
+        groups.setdefault(key, []).append(tag)
+
+    usage = get_tag_usage_counts(db)
+
+    for (_cat, _name), tags_list in groups.items():
+        if len(tags_list) <= 1:
+            continue
+        # Sort: most attachments first, then by id (oldest first as tiebreaker)
+        tags_list.sort(key=lambda t: (-usage.get(t.id, 0), t.id))
+        keeper = tags_list[0]
+        for dup in tags_list[1:]:
+            # Move any attachments from the duplicate to the keeper
+            dup_attachments = db.query(EntityTag).filter(EntityTag.tag_id == dup.id).all()
+            for et in dup_attachments:
+                existing = (
+                    db.query(EntityTag)
+                    .filter(
+                        EntityTag.tag_id == keeper.id,
+                        EntityTag.target_type == et.target_type,
+                        EntityTag.target_id == et.target_id,
+                    )
+                    .first()
+                )
+                if not existing:
+                    et.tag_id = keeper.id
+                else:
+                    db.delete(et)
+            db.delete(dup)
+
+
+def _migrate_tags_to_category(db: Session, tag_names: list[str], old_categories: list[str], new_category: str) -> None:
+    """Move existing tags from old categories to a new category, preserving attachments."""
+    for name in tag_names:
+        existing = (
+            db.query(Tag)
+            .filter(Tag.name == name, Tag.category.in_(old_categories), Tag.entity_id.is_(None))
+            .first()
+        )
+        if existing:
+            existing.category = new_category
+            existing.full_tag = f"#{new_category}: {existing.name}-{existing.created_at.isoformat()}"
+
+
 def seed_default_tags(db: Session) -> None:
     """Seed default tags for each entity category."""
+
+    # Deduplicate: if multiple standalone tags share the same name within a
+    # category, keep the one with the most attachments and delete the rest.
+    _deduplicate_tags(db)
+
+    # Migrate status tags from their old categories before seeding
+    _migrate_tags_to_category(
+        db,
+        ["ToDo", "InProgress", "Done", "Blocked"],
+        ["activity"],
+        "status",
+    )
+    _migrate_tags_to_category(
+        db,
+        ["ToRead", "Reviewed"],
+        ["source"],
+        "status",
+    )
+    # Move Milestone back to note if it was previously migrated to status
+    _migrate_tags_to_category(
+        db,
+        ["Milestone"],
+        ["status", "log"],
+        "note",
+    )
+
     defaults_by_category = {
-        "activity": ["ToDo", "InProgress", "Done", "Blocked", "Meeting", "Coding", "Reading", "Writing", "Review", "Research"],
-        "note": ["Idea", "Quote", "Definition", "Question", "Important"],
-        "log": ["Progress", "Decision", "Issue", "Milestone"],
-        "source": ["ToRead", "Reading", "Reviewed", "Reference"],
-        "actor": ["Contact", "Follow-up"],
-        "project": ["Personal", "Work"],
-        "readinglist": ["Priority", "Re-read"],
-        "learningtrack": ["Essential", "Optional"],
+        "status": ["ToDo", "InProgress", "Done", "Blocked", "ToRead", "Reviewed", "OnHold", "Cancelled"],
+        "activity": ["Meeting", "Coding", "Reading", "Writing", "Review", "Research", "Planning", "Designing"],
+        "note": ["Idea", "Quote", "Definition", "Question", "Feature", "Milestone"],
+        "log": ["Progress", "Decision", "Issue", "Reflection", "Insight"],
+        "project": ["Personal", "Work", "SideProject", "Experiment"],
     }
     for category, tag_names in defaults_by_category.items():
         for name in tag_names:

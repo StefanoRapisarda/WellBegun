@@ -13,6 +13,7 @@ class Source(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

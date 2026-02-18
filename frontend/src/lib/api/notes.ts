@@ -12,7 +12,7 @@ export async function getNote(id: number): Promise<Note> {
 	return res.json();
 }
 
-export async function createNote(data: { title: string; content?: string; skip_context_tags?: boolean }): Promise<Note> {
+export async function createNote(data: { title: string; content?: string }): Promise<Note> {
 	const res = await fetch(`${BASE}/`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

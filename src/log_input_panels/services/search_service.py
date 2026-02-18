@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 
 from log_input_panels.models import (
     Note, Log, Project, Activity, Source, Actor, Tag, EntityTag,
-    ReadingList, LearningTrack,
+    ReadingList, Plan,
 )
 
 
-ALL_TYPES = ["note", "log", "project", "activity", "source", "actor", "reading_list", "learning_track"]
+ALL_TYPES = ["note", "log", "project", "activity", "source", "actor", "reading_list", "plan"]
 
 MODEL_CONFIG = {
     "note": {
@@ -54,13 +54,16 @@ MODEL_CONFIG = {
         "title_field": "title",
         "desc_field": "description",
     },
-    "learning_track": {
-        "model": LearningTrack,
-        "text_fields": ["title", "description"],
+    "plan": {
+        "model": Plan,
+        "text_fields": ["title", "description", "motivation", "outcome"],
         "title_field": "title",
         "desc_field": "description",
     },
 }
+
+
+ARCHIVABLE_TYPES = {"project", "log", "note", "activity", "source", "actor", "plan"}
 
 
 def search(
@@ -71,6 +74,7 @@ def search(
     end_date: str | None = None,
     tag_ids: list[int] | None = None,
     tag_mode: str = "or",
+    include_archived: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -97,6 +101,10 @@ def search(
                     text_filters.append(field.ilike(f"%{query}%"))
             if text_filters:
                 q = q.filter(or_(*text_filters))
+
+        # Archived filter
+        if not include_archived and entity_type in ARCHIVABLE_TYPES:
+            q = q.filter(model.is_archived == False)  # noqa: E712
 
         # Date filter
         if start_dt:

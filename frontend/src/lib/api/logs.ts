@@ -12,7 +12,7 @@ export async function getLog(id: number): Promise<Log> {
 	return res.json();
 }
 
-export async function createLog(data: { log_type: string; title: string; content?: string }): Promise<Log> {
+export async function createLog(data: { log_type: string; title: string; content?: string; location?: string; mood?: string; weather?: string; day_theme?: string }): Promise<Log> {
 	const res = await fetch(`${BASE}/`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

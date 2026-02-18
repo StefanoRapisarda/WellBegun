@@ -5,6 +5,7 @@
 	import { loadTags } from '$lib/stores/tags';
 	import { attachTag } from '$lib/api/tags';
 	import DefaultTagSuggestions from '../shared/DefaultTagSuggestions.svelte';
+	import { onMount } from 'svelte';
 
 	let { onDone, editData, onCreate }: { onDone: () => void; editData?: Project; onCreate?: (id: number) => void } = $props();
 
@@ -18,6 +19,16 @@
 		return now.toISOString().slice(0, 16);
 	}
 	let startDate = $state(editData?.start_date ?? todayLocal());
+
+	let descEl: HTMLTextAreaElement | undefined = $state();
+
+	onMount(() => {
+		if (editData && descEl) {
+			const maxH = window.innerHeight * 0.45;
+			descEl.style.height = 'auto';
+			descEl.style.height = Math.min(descEl.scrollHeight, maxH) + 'px';
+		}
+	});
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
@@ -47,43 +58,38 @@
 	}
 </script>
 
-<form onsubmit={handleSubmit} class="form">
-	<label>
-		Title *
-		<input type="text" bind:value={title} required />
-	</label>
-	<label>
-		Description
-		<textarea bind:value={description} rows="3"></textarea>
-	</label>
-	<label>
-		Status
-		<select bind:value={status}>
+<form onsubmit={handleSubmit} class="widget" class:editing={!!editData}>
+	<input type="text" bind:value={title} required placeholder="Project title..." class="title-input" />
+	<div class="fields-row">
+		<select bind:value={status} class="field-select">
 			<option value="in_progress">In Progress</option>
 			<option value="on_hold">On Hold</option>
 			<option value="completed">Completed</option>
 			<option value="archived">Archived</option>
 		</select>
-	</label>
-	<label>
-		Start Date
-		<input type="datetime-local" bind:value={startDate} />
-	</label>
+		<input type="datetime-local" bind:value={startDate} class="field-input" />
+	</div>
+	<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
 	{#if !editData}
 		<DefaultTagSuggestions category="project" bind:selectedTagIds />
 	{/if}
-	<div class="form-actions">
-		<button type="button" class="btn btn-cancel" onclick={onDone}>Cancel</button>
-		<button type="submit" class="btn btn-primary">{editData ? 'Save' : 'Create'}</button>
+	<div class="button-row">
+		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>
+		<button type="submit" class="btn-save">{editData ? 'Save' : 'Create'}</button>
 	</div>
 </form>
 
 <style>
-	.form { display: flex; flex-direction: column; gap: 12px; }
-	label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; font-weight: 500; color: #374151; }
-	input, textarea, select { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.875rem; }
-	.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-	.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; font-size: 0.875rem; }
-	.btn-cancel { background: white; }
-	.btn-primary { background: #3b82f6; color: white; border-color: #3b82f6; }
+	.widget { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; margin-bottom: 12px; }
+	.widget.editing { background: #fefce8; border-color: #fde68a; }
+	.title-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
+	.fields-row { display: flex; gap: 6px; }
+	.field-input { flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.field-select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.field-textarea { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical; font-family: inherit; }
+	.btn-save { padding: 6px 14px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-save:hover { background: #2563eb; }
+	.btn-cancel { padding: 6px 14px; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-cancel:hover { background: #f3f4f6; }
 </style>

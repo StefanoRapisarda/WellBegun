@@ -6,9 +6,10 @@ from log_input_panels.models.note import Note
 from log_input_panels.models.source import Source
 from log_input_panels.models.actor import Actor
 from log_input_panels.models.reading_list import ReadingList, ReadingListItem
-from log_input_panels.models.learning_track import LearningTrack, LearningTrackItem
+from log_input_panels.models.plan import Plan, PlanItem
 from log_input_panels.models.knowledge_triple import KnowledgeTriple
 from log_input_panels.models.board_node import BoardNode
+from log_input_panels.models.custom_predicate import CustomPredicate
 
 __all__ = [
     "Base",
@@ -22,8 +23,9 @@ __all__ = [
     "Actor",
     "ReadingList",
     "ReadingListItem",
-    "LearningTrack",
-    "LearningTrackItem",
+    "Plan",
+    "PlanItem",
     "KnowledgeTriple",
     "BoardNode",
+    "CustomPredicate",
 ]

@@ -12,7 +12,7 @@ export async function getSource(id: number): Promise<Source> {
 	return res.json();
 }
 
-export async function createSource(data: { title: string; description?: string; content_url?: string; source_type?: string }): Promise<Source> {
+export async function createSource(data: { title: string; description?: string; author?: string; content_url?: string; source_type?: string }): Promise<Source> {
 	const res = await fetch(`${BASE}/`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

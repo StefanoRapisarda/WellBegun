@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 
 from log_input_panels.models.note import Note
 from log_input_panels.services.tag_service import create_entity_tag, delete_entity_tag, update_entity_tag
-from log_input_panels.services.active_context_service import attach_active_context_tags
 from log_input_panels.services.graph_cleanup import delete_entity_graph_data
 
 
@@ -18,14 +17,11 @@ def create(
     db: Session,
     title: str,
     content: str | None = None,
-    skip_context_tags: bool = False,
 ) -> Note:
     note = Note(title=title, content=content)
     db.add(note)
     db.flush()
     create_entity_tag(db, title, "note", "note", note.id)
-    if not skip_context_tags:
-        attach_active_context_tags(db, "note", note.id)
     db.commit()
     db.refresh(note)
     return note

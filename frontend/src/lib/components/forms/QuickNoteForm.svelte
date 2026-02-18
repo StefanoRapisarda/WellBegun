@@ -81,24 +81,22 @@
 </script>
 
 <form onsubmit={handleSubmit} class="note-widget" class:editing={!!editData}>
-	<div class="note-row">
-		<input type="text" bind:value={title} placeholder="Note title..." class="note-title" required />
-		<button type="submit" class="note-save">{editData ? 'Update' : 'Save'}</button>
-		{#if editData}
-			<button type="button" class="note-cancel" onclick={handleCancel}>Cancel</button>
-		{/if}
-	</div>
-	<HashtagTextarea bind:value={content} rows={2} placeholder="Content (optional) — type # to insert tags" />
+	<input type="text" bind:value={title} placeholder="Note title..." class="note-title" required />
+	<HashtagTextarea bind:value={content} rows={editData ? 4 : 2} autoSize={!!editData} placeholder="Content (optional) — type # to insert tags" />
 	{#if !editData}
 		<DefaultTagSuggestions category="note" bind:selectedTagIds />
 	{/if}
+	<div class="button-row">
+		<button type="button" class="note-cancel" onclick={handleCancel}>Cancel</button>
+		<button type="submit" class="note-save">{editData ? 'Save' : 'Create'}</button>
+	</div>
 </form>
 
 <style>
 	.note-widget { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #ecfdf5; border: 1px solid #d1fae5; border-radius: 8px; margin-bottom: 12px; }
 	.note-widget.editing { background: #fefce8; border-color: #fde68a; }
-	.note-row { display: flex; gap: 6px; align-items: center; }
-	.note-title { flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.note-title { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 	.note-save { padding: 6px 14px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
 	.note-save:hover { background: #059669; }
 	.note-cancel { padding: 6px 14px; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }

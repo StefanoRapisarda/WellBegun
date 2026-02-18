@@ -1,14 +1,16 @@
 <script lang="ts">
+	import { get } from 'svelte/store';
 	import { panelSelection, selectedCount, selectedEntities, type EntityType } from '$lib/stores/panelSelection';
-	import { loadProjects } from '$lib/stores/projects';
-	import { loadLogs } from '$lib/stores/logs';
-	import { loadNotes } from '$lib/stores/notes';
-	import { loadActivities } from '$lib/stores/activities';
-	import { loadSources } from '$lib/stores/sources';
-	import { loadActors } from '$lib/stores/actors';
-	import { loadReadingLists } from '$lib/stores/readingLists';
-	import { loadLearningTracks } from '$lib/stores/learningTracks';
+	import { projects, loadProjects } from '$lib/stores/projects';
+	import { logs, loadLogs } from '$lib/stores/logs';
+	import { notes, loadNotes } from '$lib/stores/notes';
+	import { activities, loadActivities } from '$lib/stores/activities';
+	import { sources, loadSources } from '$lib/stores/sources';
+	import { actors, loadActors } from '$lib/stores/actors';
+	import { readingLists, loadReadingLists } from '$lib/stores/readingLists';
 	import { loadTags, triggerEntityTagsRefresh } from '$lib/stores/tags';
+	import { notepadText } from '$lib/stores/notepad';
+	import { activeTab } from '$lib/stores/activeTab';
 
 	import { deleteProject, activateProject, deactivateProject, archiveProject } from '$lib/api/projects';
 	import { deleteLog, activateLog, deactivateLog, archiveLog } from '$lib/api/logs';
@@ -17,14 +19,16 @@
 	import { deleteSource, activateSource, deactivateSource, archiveSource } from '$lib/api/sources';
 	import { deleteActor, activateActor, deactivateActor, archiveActor } from '$lib/api/actors';
 	import { deleteReadingList, activateReadingList, deactivateReadingList } from '$lib/api/readingLists';
-	import { deleteLearningTrack, activateLearningTrack, deactivateLearningTrack } from '$lib/api/learningTracks';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
+	import { serializeEntity } from '$lib/notepad/parser';
+	import { ENTITY_CONFIG, type NotepadEntityType } from '$lib/notepad/types';
+	import { entityToNotepadFields } from '$lib/notepad/utils';
 
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import TagInput from './TagInput.svelte';
 	import type { Tag } from '$lib/types';
 
-	const SUPPORTS_ACTIVE: EntityType[] = ['project', 'log', 'activity', 'source', 'actor', 'reading_list', 'learning_track'];
+	const SUPPORTS_ACTIVE: EntityType[] = ['project', 'log', 'activity', 'source', 'actor', 'reading_list'];
 	const SUPPORTS_ARCHIVE: EntityType[] = ['project', 'log', 'note', 'activity', 'source', 'actor'];
 
 	let showConfirmDelete = $state(false);
@@ -47,7 +51,6 @@
 			loadSources(),
 			loadActors(),
 			loadReadingLists(),
-			loadLearningTracks(),
 			loadTags()
 		]);
 		triggerEntityTagsRefresh();
@@ -61,7 +64,6 @@
 		source: activateSource,
 		actor: activateActor,
 		reading_list: activateReadingList,
-		learning_track: activateLearningTrack,
 	};
 
 	const deactivators: Record<EntityType, ((id: number) => Promise<any>) | null> = {
@@ -72,7 +74,6 @@
 		source: deactivateSource,
 		actor: deactivateActor,
 		reading_list: deactivateReadingList,
-		learning_track: deactivateLearningTrack,
 	};
 
 	const archivers: Record<EntityType, ((id: number) => Promise<any>) | null> = {
@@ -83,7 +84,6 @@
 		source: archiveSource,
 		actor: archiveActor,
 		reading_list: null,
-		learning_track: null,
 	};
 
 	const deleters: Record<EntityType, (id: number) => Promise<void>> = {
@@ -94,7 +94,6 @@
 		source: deleteSource,
 		actor: deleteActor,
 		reading_list: deleteReadingList,
-		learning_track: deleteLearningTrack,
 	};
 
 	async function bulkActivate() {
@@ -172,6 +171,48 @@
 		await reloadAllStores();
 		busy = false;
 	}
+
+	const storeMap: Record<EntityType, any> = {
+		project: projects,
+		log: logs,
+		note: notes,
+		activity: activities,
+		source: sources,
+		actor: actors,
+		reading_list: readingLists,
+	};
+
+	async function sendToNotepad() {
+		busy = true;
+		const blocks: string[] = [];
+
+		for (const e of entities) {
+			const store = storeMap[e.entityType];
+			const items = get(store) as any[];
+			const entity = items.find((item: any) => item.id === e.entityId);
+			if (!entity) continue;
+
+			const fields = entityToNotepadFields(e.entityType, entity);
+
+			// Fetch tags and include them
+			const tags = await getEntityTags(e.entityType, e.entityId);
+			if (tags.length > 0) {
+				fields.tags = tags.map(t => t.name).join(', ');
+			}
+
+			blocks.push(serializeEntity(e.entityType as NotepadEntityType, fields, undefined, entity.id));
+		}
+
+		if (blocks.length === 0) { busy = false; return; }
+
+		const newText = blocks.join('\n\n');
+		const current = get(notepadText);
+		notepadText.set(current.trim() ? current.trimEnd() + '\n\n' + newText : newText);
+
+		activeTab.set('notepad');
+		panelSelection.clear();
+		busy = false;
+	}
 </script>
 
 {#if count >= 2}
@@ -181,6 +222,7 @@
 		<span class="count">{count} selected</span>
 		<div class="divider"></div>
 		<button class="bulk-btn tags" onclick={handleTagsClick} disabled={busy}>Tags</button>
+		<button class="bulk-btn notepad" onclick={sendToNotepad} disabled={busy}>Notepad</button>
 		{#if hasActivatable}
 			<button class="bulk-btn active" onclick={bulkActivate} disabled={busy}>Active</button>
 			<button class="bulk-btn inactive" onclick={bulkDeactivate} disabled={busy}>Inactive</button>
@@ -255,6 +297,7 @@
 	.bulk-btn:hover:not(:disabled) { background: #f3f4f6; }
 	.bulk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.bulk-btn.tags { background: #f9fafb; color: #6b7280; }
+	.bulk-btn.notepad { background: #ede9fe; color: #6d28d9; border-color: #ddd6fe; }
 	.bulk-btn.active { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
 	.bulk-btn.inactive { background: #f3f4f6; color: #6b7280; }
 	.bulk-btn.archive { background: #fef3c7; color: #92400e; border-color: #fde68a; }

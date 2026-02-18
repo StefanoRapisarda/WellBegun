@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { SessionCard } from './types';
+	import type { KnowledgeTriple, BoardNode } from '$lib/types';
 	import BoardCard from './BoardCard.svelte';
+	import GraphConnections from '$lib/components/graph/GraphConnections.svelte';
 
 	const ENTITY_COLORS: Record<string, string> = {
 		project: '#5c7a99',
@@ -10,25 +12,77 @@
 		source: '#c9a227',
 		actor: '#8b4557',
 		reading_list: '#5f9ea0',
-		learning_track: '#7b6b8d'
+		plan: '#6b8ba3'
 	};
+
+	const CARD_W = 150;
+	const CARD_H = 60;
 
 	let {
 		cards,
+		triples = [],
 		onTextDrop,
 		onCardMove,
 		onCardDblClick,
-		onCardDelete
+		onCardDelete,
+		onCardConnect,
+		onConnectionSwap,
+		onConnectionDelete,
+		onPredicateSelect
 	}: {
 		cards: SessionCard[];
+		triples?: KnowledgeTriple[];
 		onTextDrop: (text: string, x: number, y: number) => void;
 		onCardMove: (cardId: string, x: number, y: number) => void;
 		onCardDblClick: (card: SessionCard) => void;
 		onCardDelete: (card: SessionCard) => void;
+		onCardConnect?: (sourceCard: SessionCard, targetCard: SessionCard) => void;
+		onConnectionSwap?: (tripleId: number) => void;
+		onConnectionDelete?: (tripleId: number) => void;
+		onPredicateSelect?: (tripleId: number, predicate: string) => void;
 	} = $props();
 
 	let boardEl: HTMLDivElement | undefined = $state();
 	let isDragOver = $state(false);
+
+	// ── Overlap / drop-target state ──
+	let dropTarget: SessionCard | null = $state(null);
+	let draggingCardRef: SessionCard | null = $state(null);
+
+	// ── Predicate editing state ──
+	let editingTripleId = $state<number | null>(null);
+	let editingPredicate = $state('');
+
+	// ── Build nodeMap for GraphConnections ──
+	let nodeMap = $derived.by(() => {
+		const map = new Map<string, BoardNode>();
+		for (const card of cards) {
+			const key = `${card.entityType}:${card.entityId}`;
+			map.set(key, {
+				id: 0,
+				entity_type: card.entityType,
+				entity_id: card.entityId,
+				x: card.x,
+				y: card.y,
+				collapsed: false,
+				created_at: '',
+				updated_at: ''
+			});
+		}
+		return map;
+	});
+
+	// ── Filter triples to only those with both ends on the board ──
+	let boardTriples = $derived.by(() => {
+		if (!triples || triples.length === 0) return [];
+		return triples.filter(t => {
+			const sKey = `${t.subject_type}:${t.subject_id}`;
+			const oKey = `${t.object_type}:${t.object_id}`;
+			return nodeMap.has(sKey) && nodeMap.has(oKey);
+		});
+	});
+
+	const emptyCollapsed = new Set<string>();
 
 	// ── Pointer-based card dragging ──
 	let dragging: { cardId: string; startX: number; startY: number; origX: number; origY: number } | null = $state(null);
@@ -45,6 +99,7 @@
 			origX: card.x,
 			origY: card.y
 		};
+		draggingCardRef = card;
 		dragStarted = false;
 		document.addEventListener('pointermove', handlePointerMove);
 		document.addEventListener('pointerup', handlePointerUp);
@@ -58,14 +113,79 @@
 			if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
 			dragStarted = true;
 		}
-		onCardMove(dragging.cardId, dragging.origX + dx, dragging.origY + dy);
+		const newX = dragging.origX + dx;
+		const newY = dragging.origY + dy;
+		onCardMove(dragging.cardId, newX, newY);
+
+		// ── Overlap detection: check if dragged card center falls inside another card ──
+		const centerX = newX + CARD_W / 2;
+		const centerY = newY + CARD_H / 2;
+		let found: SessionCard | null = null;
+		for (const card of cards) {
+			if (card.id === dragging.cardId) continue;
+			if (centerX >= card.x && centerX <= card.x + CARD_W &&
+				centerY >= card.y && centerY <= card.y + CARD_H) {
+				found = card;
+				break;
+			}
+		}
+		dropTarget = found;
 	}
 
 	function handlePointerUp() {
-		dragging = null;
-		dragStarted = false;
 		document.removeEventListener('pointermove', handlePointerMove);
 		document.removeEventListener('pointerup', handlePointerUp);
+
+		if (dragging && dragStarted && dropTarget && draggingCardRef) {
+			// Snap dragged card back to original position
+			onCardMove(dragging.cardId, dragging.origX, dragging.origY);
+			// Create connection
+			onCardConnect?.(draggingCardRef, dropTarget);
+		}
+
+		dragging = null;
+		dragStarted = false;
+		dropTarget = null;
+		draggingCardRef = null;
+	}
+
+	// ── Predicate editing handlers ──
+	function handlePredicateDblClick(tripleId: number, currentPredicate: string) {
+		editingTripleId = tripleId;
+		editingPredicate = currentPredicate;
+	}
+
+	function handlePredicateChange(value: string) {
+		editingPredicate = value;
+	}
+
+	function handlePredicateBlur() {
+		if (editingTripleId !== null && editingPredicate.trim()) {
+			onPredicateSelect?.(editingTripleId, editingPredicate.trim());
+		}
+		editingTripleId = null;
+		editingPredicate = '';
+	}
+
+	function handlePredicateKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			(e.target as HTMLInputElement)?.blur();
+		} else if (e.key === 'Escape') {
+			editingTripleId = null;
+			editingPredicate = '';
+		}
+	}
+
+	function handleConnectionSwap(tripleId: number) {
+		onConnectionSwap?.(tripleId);
+	}
+
+	function handleConnectionDelete(tripleId: number) {
+		onConnectionDelete?.(tripleId);
+	}
+
+	function handlePredicateSelect(tripleId: number, predicate: string) {
+		onPredicateSelect?.(tripleId, predicate);
 	}
 
 	// ── Text drop from PDF ──
@@ -101,6 +221,15 @@
 	function getCardColor(entityType: string): string {
 		return ENTITY_COLORS[entityType] ?? '#6b7280';
 	}
+
+	function isHighlighted(card: SessionCard): boolean {
+		if (!dropTarget) return false;
+		// Highlight the drop target card
+		if (card.id === dropTarget.id) return true;
+		// Highlight the dragged card itself during overlap
+		if (draggingCardRef && card.id === draggingCardRef.id) return true;
+		return false;
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -122,10 +251,30 @@
 			<p class="empty-hint">Or use the toolbar buttons above</p>
 		</div>
 	{/if}
+	<!-- SVG connections (rendered behind cards) -->
+	{#if boardTriples.length > 0}
+		<GraphConnections
+			triples={boardTriples}
+			{nodeMap}
+			cardWidth={CARD_W}
+			cardHeight={CARD_H}
+			collapsedNodes={emptyCollapsed}
+			{editingTripleId}
+			{editingPredicate}
+			onPredicateDblClick={handlePredicateDblClick}
+			onPredicateChange={handlePredicateChange}
+			onPredicateBlur={handlePredicateBlur}
+			onPredicateKeydown={handlePredicateKeydown}
+			onConnectionSwap={handleConnectionSwap}
+			onConnectionDelete={handleConnectionDelete}
+			onPredicateSelect={handlePredicateSelect}
+		/>
+	{/if}
 	{#each cards as card (card.id)}
 		<BoardCard
 			{card}
 			color={getCardColor(card.entityType)}
+			highlighted={isHighlighted(card)}
 			onPointerDown={(e) => handleCardPointerDown(card, e)}
 			onDblClick={() => onCardDblClick(card)}
 			onDelete={() => onCardDelete(card)}

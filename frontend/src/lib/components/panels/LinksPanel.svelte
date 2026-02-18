@@ -9,7 +9,6 @@
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
 	import { readingLists } from '$lib/stores/readingLists';
-	import { learningTracks } from '$lib/stores/learningTracks';
 	import { entityTagsVersion } from '$lib/stores/tags';
 	import { triggerEntityTagsRefresh } from '$lib/stores/tags';
 	import { updateTriple, deleteTriple, createTriple } from '$lib/api/knowledge';
@@ -17,7 +16,7 @@
 	import PanelContainer from '../shared/PanelContainer.svelte';
 	import ConfirmDialog from '../shared/ConfirmDialog.svelte';
 	import { onMount } from 'svelte';
-	import { structuralPredicates, loadPredicates, semanticRelations } from '$lib/stores/predicates';
+	import { structuralPredicates, loadPredicates, semanticRelations, customPredicates } from '$lib/stores/predicates';
 
 	const ENTITY_COLORS: Record<string, string> = {
 		project: '#5c7a99',
@@ -26,8 +25,7 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
-		learning_track: '#7b6b8d'
+		reading_list: '#5f9ea0'
 	};
 
 	interface UnifiedLink {
@@ -46,8 +44,6 @@
 	}
 
 	let confirmDeleteKey: string | null = $state(null);
-	let editingKey: string | null = $state(null);
-	let editingValue = $state('');
 	let showPredicateMenuKey: string | null = $state(null);
 	let tagLinks = $state<TagLink[]>([]);
 
@@ -60,7 +56,6 @@
 			case 'source': return $sources.find(e => e.id === id)?.title ?? `Source #${id}`;
 			case 'actor': return $actors.find(e => e.id === id)?.full_name ?? `Actor #${id}`;
 			case 'reading_list': return $readingLists.find(e => e.id === id)?.title ?? `ReadingList #${id}`;
-			case 'learning_track': return $learningTracks.find(e => e.id === id)?.title ?? `LearnTrack #${id}`;
 			default: return `${type} #${id}`;
 		}
 	}
@@ -234,47 +229,14 @@
 				results.push({ label: pred.forward, group: category });
 			}
 		}
+		// Custom predicates
+		for (const cp of $customPredicates) {
+			results.push({ label: cp.forward, group: cp.category });
+		}
 		return results;
 	}
 
 	// ── Edit predicate handler ──────────────────────────────────────────────
-
-	function startEditing(link: UnifiedLink) {
-		editingKey = link.key;
-		editingValue = link.predicate;
-		showPredicateMenuKey = null;
-	}
-
-	async function handleUpdatePredicate(link: UnifiedLink) {
-		if (!editingValue.trim() || !$selectedEntity) {
-			editingKey = null;
-			editingValue = '';
-			return;
-		}
-		const newPredicate = editingValue.trim();
-		if (link.tripleId !== null) {
-			// Triple exists: update it
-			await updateTriple(link.tripleId, newPredicate);
-		} else {
-			// Tag-only: create a new triple
-			const selType = $selectedEntity.type;
-			const selId = $selectedEntity.id;
-			const subjectType = link.direction === 'outgoing' ? selType : link.otherType;
-			const subjectId = link.direction === 'outgoing' ? selId : link.otherId;
-			const objectType = link.direction === 'outgoing' ? link.otherType : selType;
-			const objectId = link.direction === 'outgoing' ? link.otherId : selId;
-			await createTriple({
-				subject_type: subjectType,
-				subject_id: subjectId,
-				predicate: newPredicate,
-				object_type: objectType,
-				object_id: objectId
-			});
-		}
-		await loadTriples();
-		editingKey = null;
-		editingValue = '';
-	}
 
 	async function handleSelectPredicate(link: UnifiedLink, predicate: string) {
 		if (!$selectedEntity) return;
@@ -359,11 +321,6 @@
 		confirmDeleteKey = null;
 	}
 
-	function handleKeydown(e: KeyboardEvent, link: UnifiedLink) {
-		if (e.key === 'Enter') handleUpdatePredicate(link);
-		else if (e.key === 'Escape') { editingKey = null; editingValue = ''; }
-	}
-
 	onMount(() => { loadPredicates(); loadTriples(); });
 </script>
 
@@ -400,40 +357,21 @@
 					{/if}
 				</div>
 				<div class="link-predicate-row">
-					{#if editingKey === link.key}
-						<input
-							type="text"
-							class="predicate-edit"
-							bind:value={editingValue}
-							onblur={() => handleUpdatePredicate(link)}
-							onkeydown={(e) => handleKeydown(e, link)}
-							autofocus
-						/>
-					{:else}
-						<button
-							class="predicate-label"
-							onclick={() => startEditing(link)}
-							title="Click to edit predicate"
-						>
-							{link.predicate}
-						</button>
-						<div class="predicate-actions">
-							<button
-								class="btn-menu"
-								onclick={() => showPredicateMenuKey = showPredicateMenuKey === link.key ? null : link.key}
-								title="Choose predicate"
-							>
-								▾
-							</button>
-							<button
-								class="btn-remove"
-								onclick={() => (confirmDeleteKey = link.key)}
-								title="Remove link"
-							>
-								×
-							</button>
-						</div>
-					{/if}
+					<button
+						class="predicate-label"
+						onclick={() => showPredicateMenuKey = showPredicateMenuKey === link.key ? null : link.key}
+						title="Click to change predicate"
+					>
+						{link.predicate}
+						<span class="predicate-caret">▾</span>
+					</button>
+					<button
+						class="btn-remove"
+						onclick={() => (confirmDeleteKey = link.key)}
+						title="Remove link"
+					>
+						×
+					</button>
 				</div>
 				{#if showPredicateMenuKey === link.key}
 					{@const preds = getSuggestedPredicates(link)}
@@ -603,32 +541,10 @@
 		border-color: #9ca3af;
 		color: #374151;
 	}
-	.predicate-edit {
-		font-size: 0.75rem;
-		padding: 2px 8px;
-		border: 1px solid #6b7280;
-		border-radius: 4px;
-		outline: none;
-		flex: 1;
-		min-width: 0;
-	}
-	.predicate-actions {
-		display: flex;
-		gap: 2px;
-		flex-shrink: 0;
-	}
-	.btn-menu {
-		font-size: 0.7rem;
-		padding: 2px 4px;
-		background: #f9fafb;
-		border: 1px solid #e5e7eb;
-		border-radius: 3px;
-		cursor: pointer;
+	.predicate-caret {
+		font-size: 0.65rem;
 		color: #9ca3af;
-	}
-	.btn-menu:hover {
-		color: #374151;
-		border-color: #9ca3af;
+		margin-left: 2px;
 	}
 	.btn-remove {
 		font-size: 0.85rem;

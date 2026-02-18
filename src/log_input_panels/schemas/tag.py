@@ -9,6 +9,7 @@ class TagOut(BaseModel):
     category: str
     full_tag: str
     description: str | None = None
+    color: str | None = None
     entity_type: str | None = None
     entity_id: int | None = None
     is_system: bool = False
@@ -21,11 +22,13 @@ class WildTagCreate(BaseModel):
     name: str
     description: str | None = None
     category: str = "wild"
+    color: str | None = None
 
 
 class WildTagUpdate(BaseModel):
     description: str | None = None
     category: str | None = None
+    color: str | None = None
 
 
 class MoveCategoryRequest(BaseModel):

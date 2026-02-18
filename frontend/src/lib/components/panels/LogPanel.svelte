@@ -5,7 +5,7 @@
 	import { projects } from '$lib/stores/projects';
 	import { activities } from '$lib/stores/activities';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
-	import { getLastUsedTags, setLastUsedTags } from '$lib/stores/lastUsedTags';
+	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { deleteLog, activateLog, deactivateLog, archiveLog } from '$lib/api/logs';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
@@ -52,6 +52,7 @@
 		(!$showActiveRelated || isActiveRelated(entityTags[l.id] || [], $activeEntityTagIds))
 	));
 
+	let showForm = $state(false);
 	let editingIds = $state<Set<number>>(new Set());
 	let confirmDelete: number | null = $state(null);
 	let expandedId: number | null = $state(null);
@@ -113,20 +114,7 @@
 			(t.entity_type === 'activity' && t.entity_id && activeActivityIds.includes(t.entity_id))
 		);
 
-		// Also get last-used tags (filtering out inactive ones)
-		const activeProjectsList = $projects.filter(p => p.is_active);
-		const activeActivitiesList = $activities.filter(a => a.is_active);
-		const lastUsed = getLastUsedTags('log', activeProjectsList, activeActivitiesList);
-
-		// Combine and deduplicate
-		const allTags = [...activeEntityTags];
-		for (const tag of lastUsed) {
-			if (!allTags.some(t => t.id === tag.id)) {
-				allTags.push(tag);
-			}
-		}
-
-		for (const tag of allTags) {
+		for (const tag of activeEntityTags) {
 			try {
 				await attachTag(tag.id, 'log', logId);
 			} catch (e) {
@@ -134,7 +122,7 @@
 			}
 		}
 
-		if (allTags.length > 0) {
+		if (activeEntityTags.length > 0) {
 			entityTags[logId] = await getEntityTags('log', logId);
 		}
 	}
@@ -158,13 +146,18 @@
 	title="Logs"
 	panelId="log"
 	color="#8b7355"
+	onAdd={() => (showForm = !showForm)}
 	availableTags={availablePanelTags()}
 	selectedTagIds={panelSelectedTagIds}
 	filterMode={panelFilterMode}
 	onTagToggle={handlePanelTagToggle}
 	onModeToggle={handlePanelModeToggle}
 >
-	<DiaryForm onCreate={handleCreate} />
+	{#if showForm}
+		<div class="inline-form">
+			<DiaryForm onCreate={handleCreate} onDone={() => (showForm = false)} />
+		</div>
+	{/if}
 
 	{#each filteredLogs as log (log.id)}
 		{#if editingIds.has(log.id)}
@@ -183,8 +176,14 @@
 					<div class="item-header">
 						<button class="item-title" ondblclick={() => { editingIds.add(log.id); editingIds = new Set(editingIds); }}>{log.title}</button>
 						{#if log.is_archived}<span class="archived-badge">archived</span>{/if}
+						{#if log.mood}<span class="log-emoji">{log.mood}</span>{/if}
+						{#if log.weather}<span class="log-emoji">{log.weather}</span>{/if}
+						{#if log.day_theme}<span class="log-emoji">{log.day_theme}</span>{/if}
 						<span class="type-badge">{log.log_type}</span>
 					</div>
+					{#if log.location}
+						<p class="item-location">{log.location}</p>
+					{/if}
 					{#if log.content}
 						<MarkdownContent text={log.content} />
 					{/if}
@@ -228,11 +227,14 @@
 />
 
 <style>
+	.inline-form { padding: 10px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 12px; }
 	.item { padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
 	.item-actions { display: flex; gap: 6px; margin-bottom: 6px; }
 	.item-card { padding: 10px 12px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; }
 	.item-header { display: flex; align-items: center; gap: 8px; }
 	.item-title { flex: 1; background: none; border: none; cursor: pointer; font-weight: 500; font-size: 0.9rem; text-align: left; padding: 0; color: #111827; }
+	.item-location { font-size: 0.75rem; color: #92400e; margin: 4px 0 0; font-style: italic; }
+	.log-emoji { font-size: 0.85rem; }
 	.item-desc { font-size: 0.8rem; color: #6b7280; margin: 8px 0 0; }
 	.type-badge { font-size: 0.7rem; padding: 2px 6px; background: #e5e7eb; border-radius: 4px; color: #6b7280; }
 	.btn-active { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; border: 1px solid #d1d5db; cursor: pointer; background: #f3f4f6; color: #6b7280; }

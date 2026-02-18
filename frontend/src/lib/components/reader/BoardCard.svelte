@@ -4,12 +4,14 @@
 	let {
 		card,
 		color,
+		highlighted = false,
 		onPointerDown,
 		onDblClick,
 		onDelete
 	}: {
 		card: SessionCard;
 		color: string;
+		highlighted?: boolean;
 		onPointerDown: (e: PointerEvent) => void;
 		onDblClick: () => void;
 		onDelete: () => void;
@@ -27,6 +29,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="board-card"
+	class:highlighted
 	style:left="{card.x}px"
 	style:top="{card.y}px"
 	style:--card-color={color}
@@ -68,6 +71,10 @@
 	}
 	.board-card:hover {
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	}
+	.board-card.highlighted {
+		box-shadow: 0 0 0 3px #3b82f6;
+		opacity: 0.7;
 	}
 	.card-header {
 		display: flex;

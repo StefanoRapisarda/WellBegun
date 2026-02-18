@@ -7,7 +7,6 @@
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
 	import { readingLists } from '$lib/stores/readingLists';
-	import { learningTracks } from '$lib/stores/learningTracks';
 	import { tags } from '$lib/stores/tags';
 	import { focusSelection, activateFocus, isFocusActive, deactivateFocus } from '$lib/stores/focus';
 	import { getEntityTags } from '$lib/api/tags';
@@ -15,7 +14,7 @@
 	import { activateActivity } from '$lib/api/activities';
 	import { loadProjects } from '$lib/stores/projects';
 	import { loadActivities } from '$lib/stores/activities';
-	import type { Note, Project, Activity, Source, Actor, ReadingListItem, LearningTrackItem, Log, Tag } from '$lib/types';
+	import type { Note, Project, Activity, Source, Actor, ReadingListItem, Log, Tag } from '$lib/types';
 
 	// Only render data grid after mount to avoid SSR issues
 	let ready = $state(false);
@@ -28,7 +27,6 @@
 	let sourcesData = $state<Source[]>([]);
 	let actorsData = $state<Actor[]>([]);
 	let readingListsData = $state<ReadingListItem[]>([]);
-	let learningTracksData = $state<LearningTrackItem[]>([]);
 	let tagsData = $state<Tag[]>([]);
 
 	// Focus selection state
@@ -222,7 +220,6 @@
 			sources.subscribe(v => sourcesData = v ?? []),
 			actors.subscribe(v => actorsData = v ?? []),
 			readingLists.subscribe(v => readingListsData = v ?? []),
-			learningTracks.subscribe(v => learningTracksData = v ?? []),
 			tags.subscribe(v => tagsData = v ?? []),
 			focusSelection.subscribe(v => {
 				// Sync local selection with store
@@ -318,7 +315,6 @@
 					<span>{sourcesData.length} sources</span>
 					<span>{actorsData.length} actors</span>
 					<span>{readingListsData.length} reading</span>
-					<span>{learningTracksData.length} learning</span>
 				</div>
 			</section>
 
@@ -431,21 +427,10 @@
 				</div>
 			</section>
 
-			<!-- Learning & Reading -->
+			<!-- Reading -->
 			<section class="card inspire-card">
 				<h2>Things to Explore</h2>
 				<div class="inspire-content">
-					{#if learningTracksData.filter(t => t.status !== 'completed').length > 0}
-						<div class="inspire-group">
-							<h3>Learning</h3>
-							{#each learningTracksData.filter(t => t.status !== 'completed').slice(0, 3) as item}
-								<div class="inspire-item">
-									<span class="inspire-icon">L</span>
-									<span class="inspire-title">{item.title}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
 					{#if readingListsData.filter(r => r.status !== 'completed').length > 0}
 						<div class="inspire-group">
 							<h3>Reading</h3>
@@ -457,8 +442,8 @@
 							{/each}
 						</div>
 					{/if}
-					{#if learningTracksData.filter(t => t.status !== 'completed').length === 0 && readingListsData.filter(r => r.status !== 'completed').length === 0}
-						<p class="empty-msg">Add items to your reading list or learning tracks!</p>
+					{#if readingListsData.filter(r => r.status !== 'completed').length === 0}
+						<p class="empty-msg">Add items to your reading list!</p>
 					{/if}
 				</div>
 			</section>

@@ -359,9 +359,6 @@
 						{activeDoc.filePath.split('/').slice(-2).join('/')}
 					</span>
 				{/if}
-				{#if activeDoc.hasChanges}
-					<span class="unsaved-dot"></span>
-				{/if}
 				{#if saveMessage}
 					<span class="save-message" class:success={saveMessage.type === 'success'}>
 						{saveMessage.text}
@@ -382,19 +379,24 @@
 						<line x1="9" y1="15" x2="15" y2="15"/>
 					</svg>
 				</button>
-				<button
-					class="icon-btn"
-					class:has-changes={activeDoc?.hasChanges}
-					onclick={() => activeDoc && saveDocument(activeDoc)}
-					disabled={isSaving || !activeDoc}
-					title="Save (Cmd+S)"
-				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-						<polyline points="17 21 17 13 7 13 7 21"/>
-						<polyline points="7 3 7 8 15 8"/>
-					</svg>
-				</button>
+				<div class="save-btn-wrap">
+					{#if activeDoc?.hasChanges}
+						<span class="unsaved-arrow">&#9656;</span>
+					{/if}
+					<button
+						class="icon-btn"
+						class:has-changes={activeDoc?.hasChanges}
+						onclick={() => activeDoc && saveDocument(activeDoc)}
+						disabled={isSaving || !activeDoc}
+						title="Save (Cmd+S)"
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+							<polyline points="17 21 17 13 7 13 7 21"/>
+							<polyline points="7 3 7 8 15 8"/>
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			<div class="separator"></div>
@@ -639,12 +641,21 @@
 		white-space: nowrap;
 	}
 
-	.unsaved-dot {
-		width: 8px;
-		height: 8px;
-		background: #f59e0b;
-		border-radius: 50%;
-		flex-shrink: 0;
+	.save-btn-wrap {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.unsaved-arrow {
+		position: absolute;
+		right: 100%;
+		top: 50%;
+		transform: translateY(-50%);
+		color: #f59e0b;
+		font-size: 0.85rem;
+		line-height: 1;
+		pointer-events: none;
 	}
 
 	.save-message {

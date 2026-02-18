@@ -3,6 +3,7 @@
 	import type { Tag } from '$lib/types';
 	import PanelTagFilter from './PanelTagFilter.svelte';
 	import { pulsingPanels } from '$lib/stores/highlights';
+	import { togglePanel } from '$lib/stores/panels';
 
 	let {
 		title,
@@ -31,48 +32,61 @@
 	} = $props();
 
 	let showFilter = $state(false);
+	let collapsed = $state(false);
 	let hasFilter = $derived(onTagToggle !== undefined && availableTags.length > 0);
 	let isPulsing = $derived($pulsingPanels.has(panelId));
 </script>
 
-<section class="panel" class:panel-grow={grow} class:pulsing={isPulsing} style:--panel-color={color || '#6b7280'} data-panel-id={panelId}>
+<section class="panel" class:panel-grow={grow && !collapsed} class:panel-collapsed={collapsed} class:pulsing={isPulsing} style:--panel-color={color || '#6b7280'} data-panel-id={panelId}>
 	<header class="panel-header">
-		<h2>{title}</h2>
-		<div class="header-actions">
-			{#if hasFilter}
-				<button
-					class="btn-header-filter"
-					class:active={showFilter || selectedTagIds.length > 0}
-					onclick={() => (showFilter = !showFilter)}
-					title="Filter by tags"
-				>
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-					</svg>
-					{#if selectedTagIds.length > 0}
-						<span class="filter-count">{selectedTagIds.length}</span>
-					{/if}
-				</button>
+		<div class="header-left">
+			{#if panelId}
+				<button class="btn-header-close" onclick={() => togglePanel(panelId)} title="Close panel">&times;</button>
 			{/if}
-			{#if onAdd}
-				<button class="btn-header-add" onclick={onAdd}>+</button>
+			<button class="btn-collapse" onclick={() => collapsed = !collapsed} title={collapsed ? 'Expand' : 'Collapse'}>
+				<span class="collapse-chevron" class:collapsed>&#9660;</span>
+			</button>
+			<h2>{title}</h2>
+		</div>
+		<div class="header-actions">
+			{#if !collapsed}
+				{#if hasFilter}
+					<button
+						class="btn-header-filter"
+						class:active={showFilter || selectedTagIds.length > 0}
+						onclick={() => (showFilter = !showFilter)}
+						title="Filter by tags"
+					>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+						</svg>
+						{#if selectedTagIds.length > 0}
+							<span class="filter-count">{selectedTagIds.length}</span>
+						{/if}
+					</button>
+				{/if}
+				{#if onAdd}
+					<button class="btn-header-add" onclick={onAdd}>+</button>
+				{/if}
 			{/if}
 		</div>
 	</header>
-	{#if showFilter && hasFilter && onTagToggle && onModeToggle}
-		<div class="filter-section">
-			<PanelTagFilter
-				{availableTags}
-				{selectedTagIds}
-				{filterMode}
-				{onTagToggle}
-				{onModeToggle}
-			/>
+	{#if !collapsed}
+		{#if showFilter && hasFilter && onTagToggle && onModeToggle}
+			<div class="filter-section">
+				<PanelTagFilter
+					{availableTags}
+					{selectedTagIds}
+					{filterMode}
+					{onTagToggle}
+					{onModeToggle}
+				/>
+			</div>
+		{/if}
+		<div class="panel-body">
+			{@render children()}
 		</div>
 	{/if}
-	<div class="panel-body">
-		{@render children()}
-	</div>
 </section>
 
 <style>
@@ -99,6 +113,11 @@
 		align-items: center;
 		justify-content: space-between;
 		flex-shrink: 0;
+	}
+	.header-left {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.panel-header h2 {
 		margin: 0;
@@ -168,6 +187,58 @@
 	.btn-header-add:hover {
 		background: var(--panel-color);
 		color: white;
+	}
+	.panel-collapsed {
+		min-height: auto;
+		max-height: none;
+	}
+	.panel-collapsed .panel-header {
+		border-bottom: none;
+		border-radius: 8px;
+	}
+	.btn-collapse {
+		width: 18px;
+		height: 18px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		border-radius: 3px;
+		background: transparent;
+		cursor: pointer;
+		padding: 0;
+		color: #c9cdd3;
+		transition: all 0.15s;
+	}
+	.btn-collapse:hover {
+		color: #6b7280;
+	}
+	.collapse-chevron {
+		font-size: 0.55rem;
+		display: inline-block;
+		transition: transform 0.15s;
+	}
+	.collapse-chevron.collapsed {
+		transform: rotate(-90deg);
+	}
+	.btn-header-close {
+		width: 18px;
+		height: 18px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		border-radius: 3px;
+		background: transparent;
+		cursor: pointer;
+		font-size: 0.9rem;
+		line-height: 1;
+		color: #c9cdd3;
+		transition: all 0.15s;
+	}
+	.btn-header-close:hover {
+		background: #fee2e2;
+		color: #dc2626;
 	}
 	.filter-section {
 		padding: 8px 16px;

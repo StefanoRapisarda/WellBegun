@@ -1,17 +1,22 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	const ENTITY_BUTTONS: { type: string; label: string; color: string }[] = [
 		{ type: 'note', label: '+Note', color: '#6b8e6b' },
 		{ type: 'activity', label: '+Activity', color: '#b5838d' },
 		{ type: 'source', label: '+Source', color: '#c9a227' },
 		{ type: 'project', label: '+Project', color: '#5c7a99' },
 		{ type: 'log', label: '+Log', color: '#8b7355' },
-		{ type: 'actor', label: '+Actor', color: '#8b4557' }
+		{ type: 'actor', label: '+Actor', color: '#8b4557' },
+		{ type: 'plan', label: '+Plan', color: '#6b8ba3' }
 	];
 
 	let {
-		onAddEntity
+		onAddEntity,
+		extra,
 	}: {
 		onAddEntity: (entityType: string) => void;
+		extra?: Snippet;
 	} = $props();
 </script>
 
@@ -27,6 +32,11 @@
 			</button>
 		{/each}
 	</div>
+	{#if extra}
+		<div class="toolbar-extra">
+			{@render extra()}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -56,5 +66,11 @@
 	.entity-btn:hover {
 		background: var(--btn-color);
 		color: white;
+	}
+	.toolbar-extra {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 4px;
 	}
 </style>

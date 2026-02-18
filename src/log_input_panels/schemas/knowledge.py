@@ -64,3 +64,27 @@ class BoardNodeBulkUpsert(BaseModel):
 class PopulateFocusRequest(BaseModel):
     project_ids: list[int] = []
     activity_ids: list[int] = []
+
+
+# --- Custom predicate schemas ---
+
+class CustomPredicateCreate(BaseModel):
+    forward: str
+    reverse: str | None = None
+    category: str = "Custom"
+
+
+class CustomPredicateUpdate(BaseModel):
+    forward: str | None = None
+    reverse: str | None = None
+    category: str | None = None
+
+
+class CustomPredicateOut(BaseModel):
+    id: int
+    forward: str
+    reverse: str | None
+    category: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

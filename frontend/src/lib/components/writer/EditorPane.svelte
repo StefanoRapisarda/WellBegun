@@ -24,26 +24,16 @@
 	} = $props();
 
 	let editorRef = $state<HTMLTextAreaElement | null>(null);
-	let cursorLine = $state(0);
-	let lineHeight = 28;
-	let focusMode = $state(true);
 
 	let activeDoc = $derived(documents.find(d => d.id === activeDocId) || null);
 	let wordCount = $derived(activeDoc?.content.trim() ? activeDoc.content.trim().split(/\s+/).length : 0);
 	let charCount = $derived(activeDoc?.content.length || 0);
-
-	function updateCursorLine() {
-		if (!editorRef) return;
-		const text = editorRef.value.substring(0, editorRef.selectionStart);
-		cursorLine = text.split('\n').length - 1;
-	}
 
 	function handleContentInput(e: Event) {
 		const target = e.target as HTMLTextAreaElement;
 		if (activeDocId) {
 			onContentChange(activeDocId, target.value);
 		}
-		updateCursorLine();
 	}
 
 	function handleTitleInput(e: Event) {
@@ -64,18 +54,10 @@
 							bind:this={editorRef}
 							value={activeDoc.content}
 							oninput={handleContentInput}
-							onclick={updateCursorLine}
-							onkeyup={updateCursorLine}
 							class="typewriter-textarea"
 							placeholder="Start writing in markdown..."
 							spellcheck="true"
 						></textarea>
-						{#if focusMode && activeDoc.content}
-							<div
-								class="focus-line"
-								style:top="{cursorLine * lineHeight + 12}px"
-							></div>
-						{/if}
 					</div>
 				{:else}
 					<div class="preview-wrap">
@@ -163,17 +145,6 @@
 	}
 	.typewriter-textarea::placeholder {
 		color: #d1d5db;
-	}
-
-	.focus-line {
-		position: absolute;
-		left: 0;
-		right: 0;
-		height: 28px;
-		background: rgba(92, 122, 153, 0.05);
-		border-left: 2px solid rgba(92, 122, 153, 0.3);
-		pointer-events: none;
-		transition: top 0.1s ease;
 	}
 
 	.preview-wrap {

@@ -8,6 +8,7 @@
 	} = $props();
 
 	const categoryColors: Record<string, string> = {
+		status: '#92400e',
 		project: '#3b82f6',
 		log: '#8b5cf6',
 		activity: '#a855f7',
@@ -37,7 +38,7 @@
 		return name.charAt(0).toUpperCase() + name.slice(1);
 	}
 
-	let color = $derived(categoryColors[tag.category] ?? '#6b7280');
+	let color = $derived(tag.color ?? categoryColors[tag.category] ?? '#6b7280');
 	let displayName = $derived(formatTagName(tag.name));
 </script>
 

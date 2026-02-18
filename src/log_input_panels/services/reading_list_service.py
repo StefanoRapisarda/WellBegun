@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from log_input_panels.models.reading_list import ReadingList, ReadingListItem
 from log_input_panels.services.tag_service import create_entity_tag, delete_entity_tag, update_entity_tag
-from log_input_panels.services.active_context_service import attach_active_context_tags
 from log_input_panels.services.graph_cleanup import delete_entity_graph_data
 
 
@@ -36,7 +35,6 @@ def create(
     db.add(reading_list)
     db.flush()
     create_entity_tag(db, title, "reading_list", "reading_list", reading_list.id)
-    attach_active_context_tags(db, "reading_list", reading_list.id)
     db.commit()
     db.refresh(reading_list)
     return reading_list

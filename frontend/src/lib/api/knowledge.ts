@@ -1,4 +1,4 @@
-import type { KnowledgeTriple, BoardNode } from '$lib/types';
+import type { KnowledgeTriple, BoardNode, CustomPredicate } from '$lib/types';
 
 const BASE = '/api/knowledge';
 
@@ -137,8 +137,49 @@ export async function populateFromFocus(
 export async function getPredicates(): Promise<{
 	structural: Record<string, string>;
 	semantic: Record<string, { key: string; forward: string; reverse: string }[]>;
+	custom: CustomPredicate[];
 }> {
 	const res = await fetch(`${BASE}/predicates`);
 	if (!res.ok) throw new Error(`GET /predicates failed: ${res.status}`);
 	return res.json();
+}
+
+// ── Custom predicates ───────────────────────────────────────────────────────
+
+export async function getCustomPredicates(): Promise<CustomPredicate[]> {
+	const res = await fetch(`${BASE}/custom-predicates`);
+	if (!res.ok) throw new Error(`GET /custom-predicates failed: ${res.status}`);
+	return res.json();
+}
+
+export async function createCustomPredicate(data: {
+	forward: string;
+	reverse?: string | null;
+	category?: string;
+}): Promise<CustomPredicate> {
+	const res = await fetch(`${BASE}/custom-predicates`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	});
+	if (!res.ok) throw new Error(`POST /custom-predicates failed: ${res.status}`);
+	return res.json();
+}
+
+export async function updateCustomPredicate(
+	id: number,
+	data: { forward?: string; reverse?: string | null; category?: string }
+): Promise<CustomPredicate> {
+	const res = await fetch(`${BASE}/custom-predicates/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	});
+	if (!res.ok) throw new Error(`PUT /custom-predicates/${id} failed: ${res.status}`);
+	return res.json();
+}
+
+export async function deleteCustomPredicate(id: number): Promise<void> {
+	const res = await fetch(`${BASE}/custom-predicates/${id}`, { method: 'DELETE' });
+	if (!res.ok) throw new Error(`DELETE /custom-predicates/${id} failed: ${res.status}`);
 }

@@ -5,14 +5,26 @@
 	import { loadTags } from '$lib/stores/tags';
 	import { attachTag } from '$lib/api/tags';
 	import DefaultTagSuggestions from '../shared/DefaultTagSuggestions.svelte';
+	import { onMount } from 'svelte';
 
 	let { onDone, editData, onCreate }: { onDone: () => void; editData?: Source; onCreate?: (id: number) => void } = $props();
 
 	let title = $state(editData?.title ?? '');
+	let author = $state(editData?.author ?? '');
 	let description = $state(editData?.description ?? '');
 	let contentUrl = $state(editData?.content_url ?? '');
 	let sourceType = $state(editData?.source_type ?? '');
 	let selectedTagIds = $state<number[]>([]);
+
+	let descEl: HTMLTextAreaElement | undefined = $state();
+
+	onMount(() => {
+		if (editData && descEl) {
+			const maxH = window.innerHeight * 0.45;
+			descEl.style.height = 'auto';
+			descEl.style.height = Math.min(descEl.scrollHeight, maxH) + 'px';
+		}
+	});
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
@@ -20,6 +32,7 @@
 		const data = {
 			title: title.trim(),
 			description: description.trim() || undefined,
+			author: author.trim() || undefined,
 			content_url: contentUrl.trim() || undefined,
 			source_type: sourceType.trim() || undefined
 		};
@@ -42,38 +55,30 @@
 	}
 </script>
 
-<form onsubmit={handleSubmit} class="form">
-	<label>
-		Title *
-		<input type="text" bind:value={title} required />
-	</label>
-	<label>
-		Description
-		<textarea bind:value={description} rows="3"></textarea>
-	</label>
-	<label>
-		URL
-		<input type="url" bind:value={contentUrl} placeholder="https://..." />
-	</label>
-	<label>
-		Source Type
-		<input type="text" bind:value={sourceType} placeholder="e.g. book, article, video" />
-	</label>
+<form onsubmit={handleSubmit} class="widget" class:editing={!!editData}>
+	<input type="text" bind:value={title} required placeholder="Source title..." class="title-input" />
+	<input type="text" bind:value={author} placeholder="Author" class="field-input" />
+	<input type="text" bind:value={sourceType} placeholder="Type (e.g. book, article, video)" class="field-input" />
+	<input type="url" bind:value={contentUrl} placeholder="URL (https://...)" class="field-input" />
+	<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
 	{#if !editData}
 		<DefaultTagSuggestions category="source" bind:selectedTagIds />
 	{/if}
-	<div class="form-actions">
-		<button type="button" class="btn btn-cancel" onclick={onDone}>Cancel</button>
-		<button type="submit" class="btn btn-primary">{editData ? 'Save' : 'Create'}</button>
+	<div class="button-row">
+		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>
+		<button type="submit" class="btn-save">{editData ? 'Save' : 'Create'}</button>
 	</div>
 </form>
 
 <style>
-	.form { display: flex; flex-direction: column; gap: 12px; }
-	label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; font-weight: 500; color: #374151; }
-	input, textarea { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.875rem; }
-	.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-	.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; font-size: 0.875rem; }
-	.btn-cancel { background: white; }
-	.btn-primary { background: #f59e0b; color: white; border-color: #f59e0b; }
+	.widget { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 12px; }
+	.widget.editing { background: #fefce8; border-color: #fde68a; }
+	.title-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
+	.field-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.field-textarea { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical; font-family: inherit; }
+	.btn-save { padding: 6px 14px; background: #f59e0b; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-save:hover { background: #d97706; }
+	.btn-cancel { padding: 6px 14px; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-cancel:hover { background: #f3f4f6; }
 </style>

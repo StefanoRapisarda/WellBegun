@@ -7,12 +7,20 @@ class LogCreate(BaseModel):
     log_type: str
     title: str
     content: str | None = None
+    location: str | None = None
+    mood: str | None = None
+    weather: str | None = None
+    day_theme: str | None = None
 
 
 class LogUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
     log_type: str | None = None
+    location: str | None = None
+    mood: str | None = None
+    weather: str | None = None
+    day_theme: str | None = None
 
 
 class LogOut(BaseModel):
@@ -20,6 +28,10 @@ class LogOut(BaseModel):
     log_type: str
     title: str
     content: str | None = None
+    location: str | None = None
+    mood: str | None = None
+    weather: str | None = None
+    day_theme: str | None = None
     is_active: bool
     is_archived: bool
     created_at: datetime

@@ -216,7 +216,7 @@ def populate_from_focus(
 
     # 3. Collect all entities that should be on the board, validating they exist
     from log_input_panels.models import (
-        Project, Activity, Note, Log, Source, Actor, ReadingList, LearningTrack,
+        Project, Activity, Note, Log, Source, Actor, ReadingList,
     )
 
     MODEL_MAP: dict[str, type] = {
@@ -227,7 +227,6 @@ def populate_from_focus(
         "source": Source,
         "actor": Actor,
         "reading_list": ReadingList,
-        "learning_track": LearningTrack,
     }
 
     def entity_exists(etype: str, eid: int) -> bool:
@@ -268,7 +267,7 @@ def populate_from_focus(
     # 5. Layout new entities in columns by type, offset from existing content
     TYPE_ORDER = [
         "project", "activity", "log", "note",
-        "source", "actor", "reading_list", "learning_track",
+        "source", "actor", "reading_list",
     ]
     type_groups: dict[str, list[int]] = {}
     for etype, eid in new_entities:
@@ -340,7 +339,7 @@ def populate_all(db: Session) -> dict:
     """
     from log_input_panels.models.tag import Tag, EntityTag
     from log_input_panels.models import (
-        Project, Activity, Note, Log, Source, Actor, ReadingList, LearningTrack,
+        Project, Activity, Note, Log, Source, Actor, ReadingList,
     )
 
     MODEL_MAP: dict[str, type] = {
@@ -351,7 +350,6 @@ def populate_all(db: Session) -> dict:
         "source": Source,
         "actor": Actor,
         "reading_list": ReadingList,
-        "learning_track": LearningTrack,
     }
 
     # 1. Collect ALL entities from all model tables
@@ -382,7 +380,7 @@ def populate_all(db: Session) -> dict:
     # 3. Layout new entities in columns by type
     TYPE_ORDER = [
         "project", "activity", "log", "note",
-        "source", "actor", "reading_list", "learning_track",
+        "source", "actor", "reading_list",
     ]
     type_groups: dict[str, list[int]] = {}
     for etype, eid in new_entities:

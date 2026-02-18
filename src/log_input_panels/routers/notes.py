@@ -23,7 +23,7 @@ def get_note(note_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=NoteOut, status_code=201)
 def create_note(data: NoteCreate, db: Session = Depends(get_db)):
-    return note_service.create(db, title=data.title, content=data.content, skip_context_tags=data.skip_context_tags)
+    return note_service.create(db, title=data.title, content=data.content)
 
 
 @router.put("/{note_id}", response_model=NoteOut)

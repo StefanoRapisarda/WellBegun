@@ -18,7 +18,7 @@
 	let editDescription = $state('');
 
 	// System categories that cannot be deleted
-	const SYSTEM_CATEGORIES = ['activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'learningtrack', 'wild'];
+	const SYSTEM_CATEGORIES = ['activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'plan', 'wild'];
 
 	// Get all tags that are "wild" (entity_id is null) - these are the default/standalone tags
 	let standaloneTags = $derived($tags.filter((t) => t.entity_id === null));
@@ -33,11 +33,11 @@
 		'actor': 'Actor',
 		'project': 'Project',
 		'readinglist': 'Reading List',
-		'learningtrack': 'Learning Track',
+		'plan': 'Plan',
 	};
 
 	// Order for categories
-	const CATEGORY_ORDER = ['activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'learningtrack', 'wild'];
+	const CATEGORY_ORDER = ['activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'plan', 'wild'];
 
 	// Derive grouped tags by their actual category
 	let groupedTags = $derived.by(() => {

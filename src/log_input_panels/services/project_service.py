@@ -31,8 +31,6 @@ def create(
     db.add(project)
     db.flush()
     create_entity_tag(db, title, "project", "project", project.id)
-    from log_input_panels.services.active_context_service import attach_active_context_tags
-    attach_active_context_tags(db, "project", project.id)
     db.commit()
     db.refresh(project)
     return project

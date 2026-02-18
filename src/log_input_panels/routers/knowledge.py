@@ -7,12 +7,15 @@ from log_input_panels.schemas.knowledge import (
     BoardNodeOut,
     BoardNodeUpdate,
     BoardNodeUpsert,
+    CustomPredicateCreate,
+    CustomPredicateOut,
+    CustomPredicateUpdate,
     PopulateFocusRequest,
     TripleCreate,
     TripleOut,
     TripleUpdate,
 )
-from log_input_panels.services import board_service, knowledge_service
+from log_input_panels.services import board_service, knowledge_service, predicate_service
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -139,10 +142,46 @@ def populate_all(db: Session = Depends(get_db)):
 # ── Predicates ────────────────────────────────────────────────────────────────
 
 @router.get("/predicates")
-def get_predicates():
+def get_predicates(db: Session = Depends(get_db)):
     from log_input_panels.services.structural_relations import STRUCTURAL_PREDICATES, SEMANTIC_RELATIONS
     structural = {f"{k[0]}:{k[1]}": v for k, v in STRUCTURAL_PREDICATES.items()}
-    return {"structural": structural, "semantic": SEMANTIC_RELATIONS}
+    custom = predicate_service.get_all_custom_predicates(db)
+    return {
+        "structural": structural,
+        "semantic": SEMANTIC_RELATIONS,
+        "custom": [CustomPredicateOut.model_validate(cp).model_dump(mode="json") for cp in custom],
+    }
+
+
+# ── Custom predicates CRUD ───────────────────────────────────────────────────
+
+@router.get("/custom-predicates", response_model=list[CustomPredicateOut])
+def list_custom_predicates(db: Session = Depends(get_db)):
+    return predicate_service.get_all_custom_predicates(db)
+
+
+@router.post("/custom-predicates", response_model=CustomPredicateOut, status_code=201)
+def create_custom_predicate(data: CustomPredicateCreate, db: Session = Depends(get_db)):
+    return predicate_service.create_custom_predicate(
+        db, forward=data.forward, reverse=data.reverse, category=data.category
+    )
+
+
+@router.put("/custom-predicates/{predicate_id}", response_model=CustomPredicateOut)
+def update_custom_predicate(predicate_id: int, data: CustomPredicateUpdate, db: Session = Depends(get_db)):
+    cp = predicate_service.update_custom_predicate(
+        db, predicate_id, forward=data.forward, reverse=data.reverse, category=data.category
+    )
+    if not cp:
+        raise HTTPException(status_code=404, detail="Custom predicate not found")
+    return cp
+
+
+@router.delete("/custom-predicates/{predicate_id}")
+def delete_custom_predicate(predicate_id: int, db: Session = Depends(get_db)):
+    if not predicate_service.delete_custom_predicate(db, predicate_id):
+        raise HTTPException(status_code=404, detail="Custom predicate not found")
+    return {"ok": True}
 
 
 # ── Sync migration ────────────────────────────────────────────────────────────

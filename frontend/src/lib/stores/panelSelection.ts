@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-export type EntityType = 'project' | 'log' | 'note' | 'activity' | 'source' | 'actor' | 'reading_list' | 'learning_track';
+export type EntityType = 'project' | 'log' | 'note' | 'activity' | 'source' | 'actor' | 'reading_list';
 
 export interface SelectedEntity {
 	entityType: EntityType;

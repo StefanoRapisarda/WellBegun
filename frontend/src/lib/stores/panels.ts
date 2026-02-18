@@ -14,12 +14,12 @@ const defaultPanels: PanelConfig[] = [
 	{ id: 'project', label: 'Projects', visible: true, color: '#5c7a99' },      // dusty slate blue
 	{ id: 'log', label: 'Logs', visible: true, color: '#8b7355' },              // warm sepia brown
 	{ id: 'note', label: 'Notes', visible: true, color: '#6b8e6b' },            // sage green
-	{ id: 'wildtag', label: 'Wild Tags', visible: false, color: '#8b8b7a' },    // olive gray
+	{ id: 'wildtag', label: 'Tags', visible: false, color: '#8b8b7a' },    // olive gray
 	{ id: 'source', label: 'Sources', visible: false, color: '#c9a227' },       // mustard ochre
 	{ id: 'actor', label: 'Actors', visible: false, color: '#8b4557' },         // burgundy wine
 	{ id: 'activity', label: 'Activities', visible: true, color: '#b5838d' },   // dusty rose
 	{ id: 'readinglist', label: 'Reading Lists', visible: false, color: '#5f9ea0' },  // dusty teal
-	{ id: 'learningtrack', label: 'Learning Tracks', visible: false, color: '#7b6b8d' }, // dusty plum
+	{ id: 'plan', label: 'Plans', visible: false, color: '#6b8ba3' },                  // steel blue
 	{ id: 'links', label: 'Links', visible: false, color: '#6b7280' } // neutral gray
 ];
 

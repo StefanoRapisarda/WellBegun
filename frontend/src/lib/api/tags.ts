@@ -28,16 +28,16 @@ export async function getAllEntityTagsBulk(): Promise<Record<string, Tag[]>> {
 	return res.json();
 }
 
-export async function createWildTag(name: string, description?: string, category: string = 'wild'): Promise<Tag> {
+export async function createWildTag(name: string, description?: string, category: string = 'wild', color?: string): Promise<Tag> {
 	const res = await fetch(`${BASE}/wild`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ name, description: description || undefined, category })
+		body: JSON.stringify({ name, description: description || undefined, category, color: color || undefined })
 	});
 	return res.json();
 }
 
-export async function updateWildTag(tagId: number, data: { description?: string | null; category?: string }): Promise<Tag> {
+export async function updateWildTag(tagId: number, data: { description?: string | null; category?: string; color?: string | null }): Promise<Tag> {
 	const res = await fetch(`${BASE}/wild/${tagId}`, {
 		method: 'PUT',
 		headers: { 'Content-Type': 'application/json' },
@@ -88,6 +88,12 @@ export interface TagLink {
 export async function getTagLinks(entityType: string, entityId: number): Promise<TagLink[]> {
 	const res = await fetch(`${BASE}/links/${entityType}/${entityId}`);
 	if (!res.ok) throw new Error(`Failed to load tag links: ${res.status}`);
+	return res.json();
+}
+
+export async function getTagUsageCounts(): Promise<Record<number, number>> {
+	const res = await fetch(`${BASE}/usage-counts`);
+	if (!res.ok) throw new Error(`GET /usage-counts failed: ${res.status}`);
 	return res.json();
 }
 

@@ -5,7 +5,7 @@
 	import { projects } from '$lib/stores/projects';
 	import { activities } from '$lib/stores/activities';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
-	import { getLastUsedTags, setLastUsedTags } from '$lib/stores/lastUsedTags';
+	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { deleteNote, archiveNote } from '$lib/api/notes';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
@@ -54,6 +54,7 @@
 		(!$showActiveRelated || isActiveRelated(entityTags[n.id] || [], $activeEntityTagIds))
 	));
 
+	let showForm = $state(false);
 	let editingIds = $state<Set<number>>(new Set());
 	let confirmDelete: number | null = $state(null);
 	let expandedId: number | null = $state(null);
@@ -114,20 +115,7 @@
 			(t.entity_type === 'activity' && t.entity_id && activeActivityIds.includes(t.entity_id))
 		);
 
-		// Also get last-used tags (filtering out inactive ones)
-		const activeProjectsList = $projects.filter(p => p.is_active);
-		const activeActivitiesList = $activities.filter(a => a.is_active);
-		const lastUsed = getLastUsedTags('note', activeProjectsList, activeActivitiesList);
-
-		// Combine and deduplicate
-		const allTags = [...activeEntityTags];
-		for (const tag of lastUsed) {
-			if (!allTags.some(t => t.id === tag.id)) {
-				allTags.push(tag);
-			}
-		}
-
-		for (const tag of allTags) {
+		for (const tag of activeEntityTags) {
 			try {
 				await attachTag(tag.id, 'note', noteId);
 			} catch (e) {
@@ -135,7 +123,7 @@
 			}
 		}
 
-		if (allTags.length > 0) {
+		if (activeEntityTags.length > 0) {
 			entityTags[noteId] = await getEntityTags('note', noteId);
 		}
 	}
@@ -160,13 +148,18 @@
 	panelId="note"
 	color="#6b8e6b"
 	grow
+	onAdd={() => (showForm = !showForm)}
 	availableTags={availablePanelTags()}
 	selectedTagIds={panelSelectedTagIds}
 	filterMode={panelFilterMode}
 	onTagToggle={handlePanelTagToggle}
 	onModeToggle={handlePanelModeToggle}
 >
-	<QuickNoteForm onCreate={handleCreate} />
+	{#if showForm}
+		<div class="inline-form">
+			<QuickNoteForm onCreate={handleCreate} onDone={() => (showForm = false)} />
+		</div>
+	{/if}
 
 	{#each filteredNotes as note (note.id)}
 		{#if editingIds.has(note.id)}
@@ -226,6 +219,7 @@
 />
 
 <style>
+	.inline-form { padding: 10px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 12px; }
 	.item { padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
 	.item-actions { display: flex; gap: 6px; margin-bottom: 6px; }
 	.item-card { padding: 10px 12px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; }

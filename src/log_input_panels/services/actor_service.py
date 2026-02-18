@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 
 from log_input_panels.models.actor import Actor
 from log_input_panels.services.tag_service import create_entity_tag, delete_entity_tag, update_entity_tag
-from log_input_panels.services.active_context_service import attach_active_context_tags
 from log_input_panels.services.graph_cleanup import delete_entity_graph_data
 
 
@@ -36,7 +35,6 @@ def create(
     db.add(actor)
     db.flush()
     create_entity_tag(db, full_name, "actor", "actor", actor.id)
-    attach_active_context_tags(db, "actor", actor.id)
     db.commit()
     db.refresh(actor)
     return actor

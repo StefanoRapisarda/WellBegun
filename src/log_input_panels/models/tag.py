@@ -16,6 +16,7 @@ class Tag(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     entity_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False

@@ -2,6 +2,9 @@
 	import { type Tag, tagCategoryPrefix } from '$lib/types';
 	import { getTagsByCategory } from '$lib/api/tags';
 	import { searchTagsStore } from '$lib/stores/tags';
+	import { getLastUsedTags, type EntityType } from '$lib/stores/lastUsedTags';
+	import { projects } from '$lib/stores/projects';
+	import { activities } from '$lib/stores/activities';
 	import TagBadge from './TagBadge.svelte';
 	import { onMount } from 'svelte';
 
@@ -16,7 +19,6 @@
 
 	// Map targetType to tag category
 	const TARGET_TO_CATEGORY: Record<string, string> = {
-		'learning_track': 'learningtrack',
 		'reading_list': 'readinglist',
 	};
 
@@ -101,6 +103,32 @@
 		}, 200);
 	}
 
+	// Map targetType to EntityType for last-used lookup
+	const ENTITY_TYPE_MAP: Record<string, EntityType> = {
+		note: 'note', log: 'log', activity: 'activity',
+		project: 'project', source: 'source', actor: 'actor',
+	};
+
+	let lastUsedAvailable = $derived.by(() => {
+		const et = ENTITY_TYPE_MAP[targetType];
+		if (!et) return [];
+		const activeProjectsList = $projects.filter(p => p.is_active);
+		const activeActivitiesList = $activities.filter(a => a.is_active);
+		const tags = getLastUsedTags(et, activeProjectsList, activeActivitiesList);
+		return tags.filter(t =>
+			!attachedTags.some(a => a.id === t.id) &&
+			!pendingTags.some(p => p.id === t.id)
+		);
+	});
+
+	function applyLastUsed() {
+		for (const tag of lastUsedAvailable) {
+			if (!pendingTags.some(p => p.id === tag.id)) {
+				pendingTags = [...pendingTags, tag];
+			}
+		}
+	}
+
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
@@ -117,8 +145,11 @@
 </script>
 
 <div class="tag-input-wrapper">
-	{#if availableDefaults.length > 0}
+	{#if availableDefaults.length > 0 || lastUsedAvailable.length > 0}
 		<div class="default-tags">
+			{#if lastUsedAvailable.length > 0}
+				<button type="button" class="last-used-btn" onclick={applyLastUsed}>Last used</button>
+			{/if}
 			{#each availableDefaults as tag (tag.id)}
 				<button
 					type="button"
@@ -172,6 +203,21 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
+	}
+	.last-used-btn {
+		padding: 3px 10px;
+		border: 1px dashed #f59e0b;
+		border-radius: 12px;
+		background: #fffbeb;
+		cursor: pointer;
+		font-size: 0.75rem;
+		color: #92400e;
+		font-weight: 500;
+		transition: all 0.15s;
+	}
+	.last-used-btn:hover {
+		background: #fef3c7;
+		border-color: #d97706;
 	}
 	.default-chip {
 		padding: 3px 10px;

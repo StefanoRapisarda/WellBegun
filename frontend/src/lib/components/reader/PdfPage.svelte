@@ -35,12 +35,19 @@
 			pageWidth = viewport.width;
 			pageHeight = viewport.height;
 
-			// Render canvas
+			// Render canvas at native device resolution for sharp text on HiDPI displays
 			const canvas = canvasEl;
-			canvas.width = viewport.width;
-			canvas.height = viewport.height;
+			const dpr = window.devicePixelRatio || 1;
+			canvas.width = Math.floor(viewport.width * dpr);
+			canvas.height = Math.floor(viewport.height * dpr);
+			canvas.style.width = `${viewport.width}px`;
+			canvas.style.height = `${viewport.height}px`;
 
-			await page.render({ canvas, viewport }).promise;
+			await page.render({
+				canvas,
+				viewport,
+				transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined
+			}).promise;
 
 			// Render text layer
 			textLayerEl.innerHTML = '';

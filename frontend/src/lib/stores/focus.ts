@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import type { Tag, Project, Activity } from '$lib/types';
-import { clearFilterTags, resetToAll, addFilterTag, setFilterDays } from '$lib/stores/dateFilter';
+import { clearFilterTags, resetToAll, showActiveRelated } from '$lib/stores/dateFilter';
 import { activeTab } from '$lib/stores/activeTab';
 import { configurePanels } from '$lib/stores/panels';
 import { populateFromFocus } from '$lib/api/knowledge';
@@ -57,6 +57,7 @@ export function deactivateFocus() {
 	clearFocus();
 	clearFilterTags();
 	resetToAll();
+	showActiveRelated.set(false);
 	configurePanels(
 		['project', 'activity', 'log', 'note'],
 		['project', 'log', 'note', 'activity']
@@ -72,11 +73,10 @@ export function isFocusActive(selection: FocusSelection): boolean {
 /**
  * Orchestrates focus activation:
  * 1. Persists selection
- * 2. Finds matching tags from allTags by entity_type + entity_id
- * 3. Sets filter tags
- * 4. Calculates days from oldest selected entity's created_at to today
- * 5. Sets filter days
- * 6. Switches to input tab
+ * 2. Enables "Active Related" filtering
+ * 3. Configures panels based on selection
+ * 4. Populates the knowledge graph
+ * 5. Switches to input tab
  */
 export async function activateFocus(
 	selection: FocusSelection,
@@ -84,68 +84,30 @@ export async function activateFocus(
 	allProjects: Project[],
 	allActivities: Activity[]
 ) {
-	// 0. Reset graph filters from previous focus
+	// 1. Reset previous state and persist selection
 	clearGraphFilters();
-
-	// 1. Persist selection
 	setFocus(selection);
 
-	// 2. Find matching tags
-	const matchingTags = allTags.filter(tag => {
-		if (tag.entity_type === 'project' && tag.entity_id != null) {
-			return selection.projectIds.includes(tag.entity_id);
-		}
-		if (tag.entity_type === 'activity' && tag.entity_id != null) {
-			return selection.activityIds.includes(tag.entity_id);
-		}
-		return false;
-	});
+	// 2. Enable "Active Related" filtering
+	showActiveRelated.set(true);
 
-	// 3. Set filter tags
-	clearFilterTags();
-	for (const tag of matchingTags) {
-		addFilterTag(tag);
-	}
-
-	// 4. Calculate days from oldest selected entity's created_at to today
-	const selectedProjects = allProjects.filter(p => selection.projectIds.includes(p.id));
+	// 3. Configure panels based on selection
 	const selectedActivities = allActivities.filter(a => selection.activityIds.includes(a.id));
-	const allEntities = [...selectedProjects, ...selectedActivities];
-
-	let days = 7; // default
-	if (allEntities.length > 0) {
-		const oldest = allEntities.reduce((min, entity) => {
-			const d = new Date(entity.created_at).getTime();
-			return d < min ? d : min;
-		}, Infinity);
-		const now = new Date();
-		now.setHours(0, 0, 0, 0);
-		const diffDays = Math.ceil((now.getTime() - oldest) / 86400000) + 1;
-		days = Math.max(1, Math.min(365, diffDays));
-	}
-
-	// 5. Set filter days
-	setFilterDays(days);
-
-	// 6. Configure panels based on selection
-	// Base layout: project + activity left, log center, note right
 	const visibleIds = ['project', 'activity', 'log', 'note'];
 	const slotOrder = ['project', 'log', 'note', 'activity'];
 
-	// If any selected activity looks like a reading activity, add source + readinglist
 	const READING_KEYWORDS = ['reading', 'read', 'study', 'studying'];
 	const hasReadingActivity = selectedActivities.some(a =>
 		READING_KEYWORDS.some(kw => a.title.toLowerCase().includes(kw))
 	);
 	if (hasReadingActivity) {
 		visibleIds.push('source', 'readinglist');
-		// source + readinglist go below log and note (slots 4, 5 → col 1, col 2 row 2)
 		slotOrder.push('source', 'readinglist');
 	}
 
 	configurePanels(visibleIds, slotOrder);
 
-	// 7. Populate the knowledge graph with focused entities
+	// 4. Populate the knowledge graph with focused entities
 	try {
 		await populateFromFocus(selection.projectIds, selection.activityIds);
 		await Promise.allSettled([loadBoard(), loadTriples()]);
@@ -153,6 +115,6 @@ export async function activateFocus(
 		console.warn('Failed to populate graph from focus:', e);
 	}
 
-	// 8. Switch to input tab
+	// 5. Switch to input tab
 	activeTab.set('input');
 }

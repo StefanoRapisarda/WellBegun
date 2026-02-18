@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type Tag, type Note, type Log, type Project, type Activity, type Source, type Actor, type ReadingList, type LearningTrack, tagCategoryPrefix } from '$lib/types';
+	import { type Tag, type Note, type Log, type Project, type Activity, type Source, type Actor, type ReadingList, tagCategoryPrefix } from '$lib/types';
 	import { searchEntities, type SearchResult } from '$lib/api/search';
 	import { getNote } from '$lib/api/notes';
 	import { getLog } from '$lib/api/logs';
@@ -8,7 +8,6 @@
 	import { getSource } from '$lib/api/sources';
 	import { getActor } from '$lib/api/actors';
 	import { getReadingList } from '$lib/api/readingLists';
-	import { getLearningTrack } from '$lib/api/learningTracks';
 	import { loadNotes } from '$lib/stores/notes';
 	import { loadLogs } from '$lib/stores/logs';
 	import { loadProjects } from '$lib/stores/projects';
@@ -16,7 +15,6 @@
 	import { loadSources } from '$lib/stores/sources';
 	import { loadActors } from '$lib/stores/actors';
 	import { loadReadingLists } from '$lib/stores/readingLists';
-	import { loadLearningTracks } from '$lib/stores/learningTracks';
 	import { tags, loadTags } from '$lib/stores/tags';
 	import QuickNoteForm from './forms/QuickNoteForm.svelte';
 	import DiaryForm from './forms/DiaryForm.svelte';
@@ -25,7 +23,6 @@
 	import SourceForm from './forms/SourceForm.svelte';
 	import ActorForm from './forms/ActorForm.svelte';
 	import ReadingListForm from './forms/ReadingListForm.svelte';
-	import LearningTrackForm from './forms/LearningTrackForm.svelte';
 	import TagBadge from './shared/TagBadge.svelte';
 	import { onMount } from 'svelte';
 
@@ -37,7 +34,6 @@
 		{ value: 'source', label: 'Sources' },
 		{ value: 'actor', label: 'Actors' },
 		{ value: 'reading_list', label: 'Reading Lists' },
-		{ value: 'learning_track', label: 'Learning Tracks' },
 	];
 
 	const TYPE_COLORS: Record<string, string> = {
@@ -48,7 +44,6 @@
 		source: '#f59e0b',
 		actor: '#ef4444',
 		reading_list: '#06b6d4',
-		learning_track: '#0d9488',
 	};
 
 	let queryText = $state('');
@@ -155,7 +150,6 @@
 			source: getSource,
 			actor: getActor,
 			reading_list: getReadingList,
-			learning_track: getLearningTrack,
 		};
 
 		const fetcher = fetchers[result.type];
@@ -172,7 +166,7 @@
 		await Promise.all([
 			loadNotes(), loadLogs(), loadProjects(),
 			loadActivities(), loadSources(), loadActors(),
-			loadReadingLists(), loadLearningTracks(), loadTags(),
+			loadReadingLists(), loadTags(),
 		]);
 		await doSearch();
 	}
@@ -261,7 +255,7 @@
 		{#if showTagFilter}
 			<div class="tag-filter-panel">
 				{#if wildTags.length === 0}
-					<p class="no-tags-msg">No wild tags available. Create tags to filter by them.</p>
+					<p class="no-tags-msg">No tags available. Create tags to filter by them.</p>
 				{:else}
 					{#each [...tagsByCategory] as [category, categoryTags] (category)}
 						<div class="tag-category-group">
@@ -322,8 +316,6 @@
 								<ActorForm editData={editData} onDone={handleEditDone} />
 							{:else if result.type === 'reading_list'}
 								<ReadingListForm editData={editData} onDone={handleEditDone} />
-							{:else if result.type === 'learning_track'}
-								<LearningTrackForm editData={editData} onDone={handleEditDone} />
 							{/if}
 						</div>
 					{:else}

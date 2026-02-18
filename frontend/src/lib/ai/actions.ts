@@ -22,7 +22,7 @@ export interface ActionResult {
 export const actionDefinitions = [
 	{
 		name: 'switch_panel',
-		description: 'Show or hide a specific panel. Available panels: project, activity, note, log, source, actor, readinglist, learningtrack, wildtag',
+		description: 'Show or hide a specific panel. Available panels: project, activity, note, log, source, actor, readinglist, plan, wildtag',
 		parameters: {
 			panel_id: { type: 'string', description: 'The panel ID to toggle' },
 			visible: { type: 'boolean', description: 'Whether to show (true) or hide (false) the panel' }

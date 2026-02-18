@@ -7,7 +7,7 @@
 		{ type: 'source', label: '+Source', color: '#c9a227' },
 		{ type: 'actor', label: '+Actor', color: '#8b4557' },
 		{ type: 'reading_list', label: '+ReadList', color: '#5f9ea0' },
-		{ type: 'learning_track', label: '+LearnTrack', color: '#7b6b8d' }
+		{ type: 'plan', label: '+Plan', color: '#6b8ba3' }
 	];
 
 	let {
@@ -17,7 +17,8 @@
 		onZoomIn,
 		onZoomOut,
 		onZoomFit,
-		onToggleFilter
+		onToggleFilter,
+		onSwitchToCards
 	}: {
 		zoom: number;
 		filterOpen?: boolean;
@@ -26,6 +27,7 @@
 		onZoomOut: () => void;
 		onZoomFit: () => void;
 		onToggleFilter: () => void;
+		onSwitchToCards?: () => void;
 	} = $props();
 
 	let zoomPct = $derived(Math.round(zoom * 100));
@@ -58,6 +60,18 @@
 				<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
 			</svg>
 		</button>
+		{#if onSwitchToCards}
+			<button
+				class="zoom-btn cards-btn"
+				onclick={onSwitchToCards}
+				title="Switch to Cards view"
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+					<rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+				</svg>
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -139,5 +153,10 @@
 	}
 	.filter-btn.active:hover {
 		background: #4b5563;
+	}
+	.cards-btn {
+		width: auto;
+		padding: 0 6px;
+		margin-left: 4px;
 	}
 </style>

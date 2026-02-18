@@ -4,6 +4,7 @@ export interface Tag {
 	category: string;
 	full_tag: string;
 	description: string | null;
+	color: string | null;
 	entity_type: string | null;
 	entity_id: number | null;
 	is_system: boolean;
@@ -35,6 +36,10 @@ export interface Log {
 	log_type: string;
 	title: string;
 	content: string | null;
+	location: string | null;
+	mood: string | null;
+	weather: string | null;
+	day_theme: string | null;
 	is_active: boolean;
 	is_archived: boolean;
 	created_at: string;
@@ -67,6 +72,7 @@ export interface Source {
 	id: number;
 	title: string;
 	description: string | null;
+	author: string | null;
 	content_url: string | null;
 	source_type: string | null;
 	is_active: boolean;
@@ -111,34 +117,32 @@ export interface ReadingList {
 	items: ReadingListItem[];
 }
 
-export interface LearningTrackItem {
+
+export interface PlanItem {
 	id: number;
-	learning_track_id: number;
-	source_id: number;
+	plan_id: number;
+	activity_id: number;
 	position: number;
-	status: string;
+	is_done: boolean;
 	notes: string | null;
+	header: string | null;
 	created_at: string;
 	updated_at: string;
 }
 
-export interface LearningGoal {
-	id: number;
-	learning_track_id: number;
-	description: string;
-	is_completed: boolean;
-	created_at: string;
-}
-
-export interface LearningTrack {
+export interface Plan {
 	id: number;
 	title: string;
 	description: string | null;
+	motivation: string | null;
+	outcome: string | null;
+	start_date: string | null;
+	end_date: string | null;
 	is_active: boolean;
+	is_archived: boolean;
 	created_at: string;
 	updated_at: string;
-	items: LearningTrackItem[];
-	goals: LearningGoal[];
+	items: PlanItem[];
 }
 
 /**
@@ -154,6 +158,14 @@ export function tagCategoryPrefix(tag: Tag): string {
 		return 'tag';
 	}
 	return `wd-${tag.category}`;
+}
+
+export interface CustomPredicate {
+	id: number;
+	forward: string;
+	reverse: string | null;
+	category: string;
+	created_at: string;
 }
 
 export interface KnowledgeTriple {
@@ -183,4 +195,6 @@ export interface ActiveContext {
 	activities: Activity[];
 	sources: Source[];
 	actors: Actor[];
+	reading_lists: ReadingList[];
+	plans: Plan[];
 }

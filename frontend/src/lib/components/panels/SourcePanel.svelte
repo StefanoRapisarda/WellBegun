@@ -5,7 +5,7 @@
 	import { projects } from '$lib/stores/projects';
 	import { activities } from '$lib/stores/activities';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
-	import { getLastUsedTags, setLastUsedTags } from '$lib/stores/lastUsedTags';
+	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { deleteSource, activateSource, deactivateSource, archiveSource } from '$lib/api/sources';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
@@ -115,20 +115,7 @@
 			(t.entity_type === 'activity' && t.entity_id && activeActivityIds.includes(t.entity_id))
 		);
 
-		// Also get last-used tags (filtering out inactive ones)
-		const activeProjectsList = $projects.filter(p => p.is_active);
-		const activeActivitiesList = $activities.filter(a => a.is_active);
-		const lastUsed = getLastUsedTags('source', activeProjectsList, activeActivitiesList);
-
-		// Combine and deduplicate
-		const allTags = [...activeEntityTags];
-		for (const tag of lastUsed) {
-			if (!allTags.some(t => t.id === tag.id)) {
-				allTags.push(tag);
-			}
-		}
-
-		for (const tag of allTags) {
+		for (const tag of activeEntityTags) {
 			try {
 				await attachTag(tag.id, 'source', sourceId);
 			} catch (e) {
@@ -136,7 +123,7 @@
 			}
 		}
 
-		if (allTags.length > 0) {
+		if (activeEntityTags.length > 0) {
 			entityTags[sourceId] = await getEntityTags('source', sourceId);
 		}
 	}
@@ -196,6 +183,9 @@
 							<span class="type-badge">{source.source_type}</span>
 						{/if}
 					</div>
+					{#if source.author}
+						<p class="item-author">{source.author}</p>
+					{/if}
 					{#if source.description}
 						<p class="item-desc">{source.description}</p>
 					{/if}
@@ -248,6 +238,7 @@
 	.item-card { padding: 10px 12px; background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; }
 	.item-header { display: flex; align-items: center; gap: 8px; }
 	.item-title { flex: 1; background: none; border: none; cursor: pointer; font-weight: 500; font-size: 0.9rem; text-align: left; padding: 0; color: #111827; }
+	.item-author { font-size: 0.8rem; color: #92400e; margin: 4px 0 0; font-style: italic; }
 	.item-desc { font-size: 0.8rem; color: #6b7280; margin: 8px 0 0; }
 	.item-url { font-size: 0.75rem; color: #3b82f6; display: block; margin-top: 4px; }
 	.type-badge { font-size: 0.7rem; padding: 2px 6px; background: #fef3c7; border-radius: 4px; color: #92400e; }

@@ -55,7 +55,6 @@
 		} else {
 			const created = await createActivity(data);
 			activityId = created.id;
-			// Attach selected default tags to new activity
 			for (const tagId of selectedTagIds) {
 				await attachTag(tagId, 'activity', activityId);
 			}
@@ -71,34 +70,27 @@
 	}
 </script>
 
-<form onsubmit={handleSubmit} class="form">
-	<label>
-		Title *
-		<input type="text" bind:value={title} required placeholder="e.g. coding, reading" />
-	</label>
-	<label>
-		Description
-		<HashtagTextarea bind:value={description} rows={3} placeholder="What are you working on? Type # to insert tags..." />
-	</label>
-	<label>
-		Duration (minutes)
-		<input type="number" bind:value={duration} min="0" placeholder="e.g. 60" />
-	</label>
+<form onsubmit={handleSubmit} class="widget" class:editing={!!editData}>
+	<input type="text" bind:value={title} required placeholder="Activity title..." class="title-input" />
+	<input type="number" bind:value={duration} min="0" placeholder="Duration (minutes)" class="field-input" />
+	<HashtagTextarea bind:value={description} rows={3} autoSize={!!editData} placeholder="Description (optional) — type # to insert tags..." />
 	{#if !editData}
 		<DefaultTagSuggestions category="activity" bind:selectedTagIds {keywordMatches} />
 	{/if}
-	<div class="form-actions">
-		<button type="button" class="btn btn-cancel" onclick={onDone}>Cancel</button>
-		<button type="submit" class="btn btn-primary">{editData ? 'Save' : 'Create Activity'}</button>
+	<div class="button-row">
+		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>
+		<button type="submit" class="btn-save">{editData ? 'Save' : 'Create'}</button>
 	</div>
 </form>
 
 <style>
-	.form { display: flex; flex-direction: column; gap: 12px; }
-	label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; font-weight: 500; color: #374151; }
-	input { padding: 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.875rem; }
-	.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-	.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #d1d5db; cursor: pointer; font-size: 0.875rem; }
-	.btn-cancel { background: white; }
-	.btn-primary { background: #8b5cf6; color: white; border-color: #8b5cf6; }
+	.widget { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; margin-bottom: 12px; }
+	.widget.editing { background: #fefce8; border-color: #fde68a; }
+	.title-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
+	.field-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.btn-save { padding: 6px 14px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-save:hover { background: #7c3aed; }
+	.btn-cancel { padding: 6px 14px; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+	.btn-cancel:hover { background: #f3f4f6; }
 </style>

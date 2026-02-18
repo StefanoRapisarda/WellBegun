@@ -20,9 +20,11 @@
 	import WebsiteViewer from './WebsiteViewer.svelte';
 	import BoardToolbar from './BoardToolbar.svelte';
 	import CardBoard from './CardBoard.svelte';
+	import QueryPanel from '$lib/components/shared/QueryPanel.svelte';
 	import Modal from '$lib/components/shared/Modal.svelte';
 	import TagInput from '$lib/components/shared/TagInput.svelte';
 	import TagBadge from '$lib/components/shared/TagBadge.svelte';
+	import type { SearchResult } from '$lib/api/search';
 
 	// Entity forms
 	import ProjectForm from '$lib/components/forms/ProjectForm.svelte';
@@ -31,6 +33,7 @@
 	import ActivityForm from '$lib/components/forms/ActivityForm.svelte';
 	import SourceForm from '$lib/components/forms/SourceForm.svelte';
 	import ActorForm from '$lib/components/forms/ActorForm.svelte';
+	import PlanForm from '$lib/components/forms/PlanForm.svelte';
 
 	// Stores
 	import { projects } from '$lib/stores/projects';
@@ -39,13 +42,19 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
+	import { plans } from '$lib/stores/plans';
 	import { loadProjects } from '$lib/stores/projects';
 	import { loadLogs } from '$lib/stores/logs';
 	import { loadNotes } from '$lib/stores/notes';
 	import { loadActivities } from '$lib/stores/activities';
 	import { loadSources } from '$lib/stores/sources';
 	import { loadActors } from '$lib/stores/actors';
-	import { loadTags, triggerEntityTagsRefresh } from '$lib/stores/tags';
+	import { loadPlans } from '$lib/stores/plans';
+	import { tags, loadTags, triggerEntityTagsRefresh } from '$lib/stores/tags';
+	import { triples, loadTriples } from '$lib/stores/knowledgeGraph';
+	import { loadPredicates } from '$lib/stores/predicates';
+	import { updateTriple, swapTripleDirection, deleteTriple } from '$lib/api/knowledge';
+	import { onMount } from 'svelte';
 
 	// API
 	import { createProject } from '$lib/api/projects';
@@ -54,6 +63,7 @@
 	import { createActivity } from '$lib/api/activities';
 	import { createSource } from '$lib/api/sources';
 	import { createActor } from '$lib/api/actors';
+	import { createPlan } from '$lib/api/plans';
 	import { attachTag, detachTag, getEntityTags } from '$lib/api/tags';
 	import { deleteNote } from '$lib/api/notes';
 	import { deleteActivity } from '$lib/api/activities';
@@ -61,16 +71,46 @@
 	import { deleteProject } from '$lib/api/projects';
 	import { deleteLog } from '$lib/api/logs';
 	import { deleteActor } from '$lib/api/actors';
+	import { deletePlan } from '$lib/api/plans';
 
 	// ── State ──
 	let editModal = $state<{ type: string; id: number; data: any } | null>(null);
 	let modalTags = $state<Tag[]>([]);
 	let fileInput: HTMLInputElement | undefined = $state();
 	let nextCardY = $state(10);
+	let queryPanelOpen = $state(false);
+
+	function handleQueryResult(result: SearchResult) {
+		const pos = nextCardPosition();
+		addCard({
+			entityType: result.type,
+			entityId: result.id,
+			title: result.title,
+			x: pos.x,
+			y: pos.y,
+			fromTabId: currentTab?.id
+		});
+	}
 
 	// ── Derived ──
 	let currentTab = $derived($activeTab);
 	let hasTabs = $derived($readingSession.tabs.length > 0);
+
+	// ── Triples for board connections ──
+	let boardTriples = $derived(
+		$triples.filter(t => {
+			const cards = $readingSession.cards;
+			const hasSubject = cards.some(c => c.entityType === t.subject_type && c.entityId === t.subject_id);
+			const hasObject = cards.some(c => c.entityType === t.object_type && c.entityId === t.object_id);
+			return hasSubject && hasObject;
+		})
+	);
+
+	// Load triples and predicates on mount
+	onMount(() => {
+		loadTriples();
+		loadPredicates();
+	});
 
 	// ── Entity data lookup ──
 	function getEntityData(type: string, id: number): any {
@@ -81,6 +121,7 @@
 			case 'activity': return $activities.find(e => e.id === id);
 			case 'source': return $sources.find(e => e.id === id);
 			case 'actor': return $actors.find(e => e.id === id);
+			case 'plan': return $plans.find(e => e.id === id);
 			default: return null;
 		}
 	}
@@ -167,16 +208,17 @@
 	// ── Entity creation from toolbar ──
 	async function handleAddEntity(entityType: string) {
 		const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-		let created: { id: number } | null = null;
+		let created: any = null;
 
 		try {
 			switch (entityType) {
 				case 'project': created = await createProject({ title: `New Project ${now}` }); await loadProjects(); break;
 				case 'log': created = await createLog({ title: `New Log ${now}`, log_type: 'diary' }); await loadLogs(); break;
-				case 'note': created = await createNote({ title: `New Note ${now}`, skip_context_tags: true }); await loadNotes(); break;
+				case 'note': created = await createNote({ title: `New Note ${now}` }); await loadNotes(); break;
 				case 'activity': created = await createActivity({ title: `New Activity ${now}` }); await loadActivities(); break;
 				case 'source': created = await createSource({ title: `New Source ${now}` }); await loadSources(); break;
 				case 'actor': created = await createActor({ full_name: `New Actor ${now}` }); await loadActors(); break;
+				case 'plan': created = await createPlan({ title: `New Plan ${now}` }); await loadPlans(); break;
 			}
 			await loadTags();
 		} catch (err) {
@@ -211,7 +253,8 @@
 			});
 
 			// Open edit modal so user can fill in details
-			const data = getEntityData(entityType, created.id);
+			// Use store data if available, otherwise use the API response directly
+			const data = getEntityData(entityType, created.id) ?? created;
 			if (data) {
 				editModal = { type: entityType, id: created.id, data };
 				try {
@@ -247,8 +290,7 @@
 			const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
 			const note = await createNote({
 				title: `Note ${now}`,
-				content: normalizePdfText(text),
-				skip_context_tags: true
+				content: normalizePdfText(text)
 			});
 			await loadNotes();
 
@@ -269,6 +311,51 @@
 			});
 		} catch (err) {
 			console.error('Failed to create note from drop:', err);
+		}
+	}
+
+	// ── Connection handlers ──
+	async function handleCardConnect(sourceCard: SessionCard, targetCard: SessionCard) {
+		try {
+			const subjectTag = $tags.find(
+				t => t.entity_type === sourceCard.entityType && t.entity_id === sourceCard.entityId
+			);
+			if (subjectTag) {
+				await attachTag(subjectTag.id, targetCard.entityType, targetCard.entityId);
+				await loadTags();
+				await loadTriples();
+				triggerEntityTagsRefresh();
+			}
+		} catch (err) {
+			console.error('Failed to connect cards:', err);
+		}
+	}
+
+	async function handlePredicateSelect(tripleId: number, predicate: string) {
+		try {
+			await updateTriple(tripleId, predicate);
+			await loadTriples();
+		} catch (err) {
+			console.error('Failed to update predicate:', err);
+		}
+	}
+
+	async function handleConnectionSwap(tripleId: number) {
+		try {
+			await swapTripleDirection(tripleId);
+			await loadTriples();
+		} catch (err) {
+			console.error('Failed to swap connection:', err);
+		}
+	}
+
+	async function handleConnectionDelete(tripleId: number) {
+		try {
+			await deleteTriple(tripleId);
+			await loadTriples();
+			triggerEntityTagsRefresh();
+		} catch (err) {
+			console.error('Failed to delete connection:', err);
 		}
 	}
 
@@ -297,6 +384,7 @@
 				case 'project': await deleteProject(card.entityId); await loadProjects(); break;
 				case 'log': await deleteLog(card.entityId); await loadLogs(); break;
 				case 'actor': await deleteActor(card.entityId); await loadActors(); break;
+				case 'plan': await deletePlan(card.entityId); await loadPlans(); break;
 			}
 			await loadTags();
 			triggerEntityTagsRefresh();
@@ -321,6 +409,7 @@
 				case 'activity': await Promise.all([loadActivities(), loadTags()]); break;
 				case 'source': await Promise.all([loadSources(), loadTags()]); break;
 				case 'actor': await Promise.all([loadActors(), loadTags()]); break;
+				case 'plan': await Promise.all([loadPlans(), loadTags()]); break;
 			}
 			// Update card title from store
 			const data = getEntityData(editModal.type, editModal.id);
@@ -446,14 +535,40 @@
 
 		<!-- Right Panel: Card board -->
 		<div class="right-panel">
-			<BoardToolbar onAddEntity={handleAddEntity} />
-			<CardBoard
-				cards={$readingSession.cards}
-				onTextDrop={handleTextDrop}
-				onCardMove={handleCardMove}
-				onCardDblClick={handleCardDblClick}
-				onCardDelete={handleCardDelete}
-			/>
+			<BoardToolbar onAddEntity={handleAddEntity}>
+				{#snippet extra()}
+					<button
+						class="query-toggle-btn"
+						class:active={queryPanelOpen}
+						onclick={() => queryPanelOpen = !queryPanelOpen}
+						title="Search entities"
+					>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="11" cy="11" r="8"></circle>
+							<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+						</svg>
+					</button>
+				{/snippet}
+			</BoardToolbar>
+			<div class="board-area">
+				<CardBoard
+					cards={$readingSession.cards}
+					triples={boardTriples}
+					onTextDrop={handleTextDrop}
+					onCardMove={handleCardMove}
+					onCardDblClick={handleCardDblClick}
+					onCardDelete={handleCardDelete}
+					onCardConnect={handleCardConnect}
+					onConnectionSwap={handleConnectionSwap}
+					onConnectionDelete={handleConnectionDelete}
+					onPredicateSelect={handlePredicateSelect}
+				/>
+				<QueryPanel
+					open={queryPanelOpen}
+					onResultClick={handleQueryResult}
+					resultActionLabel="Add to board"
+				/>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -472,6 +587,8 @@
 		<SourceForm editData={editModal.data} onDone={closeEditModal} />
 	{:else if editModal?.type === 'actor'}
 		<ActorForm editData={editModal.data} onDone={closeEditModal} />
+	{:else if editModal?.type === 'plan'}
+		<PlanForm editData={editModal.data} onDone={closeEditModal} />
 	{/if}
 
 	{#if editModal}
@@ -609,6 +726,31 @@
 		border-left: 1px solid #e5e7eb;
 		min-width: 0;
 		overflow: hidden;
+	}
+	.board-area {
+		flex: 1;
+		position: relative;
+		overflow: hidden;
+	}
+	:global(.query-toggle-btn) {
+		padding: 4px 8px;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		background: white;
+		cursor: pointer;
+		color: #6b7280;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.15s;
+	}
+	:global(.query-toggle-btn:hover) {
+		background: #f3f4f6;
+	}
+	:global(.query-toggle-btn.active) {
+		background: #374151;
+		color: white;
+		border-color: #374151;
 	}
 
 	/* ── Document header ── */

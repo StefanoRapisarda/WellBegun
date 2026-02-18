@@ -8,6 +8,12 @@ function todayISO(): string {
 	return new Date().toISOString().slice(0, 10);
 }
 
+function yesterdayISO(): string {
+	const d = new Date();
+	d.setDate(d.getDate() - 1);
+	return d.toISOString().slice(0, 10);
+}
+
 export type FilterMode = 'all' | 'single' | 'range';
 
 export interface DateFilterState {
@@ -17,9 +23,9 @@ export interface DateFilterState {
 }
 
 export const dateFilter = writable<DateFilterState>({
-	mode: 'all',
+	mode: 'range',
 	date: todayISO(),
-	days: 7
+	days: 2
 });
 
 // Show archived items toggle
