@@ -23,7 +23,7 @@ sleep 0.5
 rm -rf "$APP_DIR/frontend/node_modules/.vite"
 
 cd "$APP_DIR"
-PYTHONPATH=src .venv/bin/uvicorn log_input_panels.main:app --reload --port $BACKEND_PORT > "$LOG_DIR/backend.log" 2>&1 &
+PYTHONPATH=src .venv/bin/uvicorn wellbegun.main:app --reload --port $BACKEND_PORT > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 
 for i in $(seq 1 30); do

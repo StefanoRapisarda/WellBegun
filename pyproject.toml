@@ -1,5 +1,5 @@
 [project]
-name = "log-input-panels"
+name = "wellbegun"
 version = "0.1.0"
 description = "Note-taking app with tagging system"
 authors = [
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.poetry]
-packages = [{include = "log_input_panels", from = "src"}]
+packages = [{include = "wellbegun", from = "src"}]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
