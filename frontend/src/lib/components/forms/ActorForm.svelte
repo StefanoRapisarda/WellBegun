@@ -72,7 +72,7 @@
 	</div>
 	<textarea bind:this={notesEl} bind:value={notes} rows="2" placeholder="Notes (optional)" class="field-textarea"></textarea>
 	{#if !editData}
-		<DefaultTagSuggestions category="actor" bind:selectedTagIds />
+		<DefaultTagSuggestions category="actor" bind:selectedTagIds title={fullName} />
 	{/if}
 	<div class="button-row">
 		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>

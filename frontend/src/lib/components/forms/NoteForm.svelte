@@ -49,7 +49,7 @@
 	<input type="text" bind:value={title} required placeholder="Note title..." class="title-input" />
 	<HashtagTextarea bind:value={content} rows={editData ? 4 : 2} autoSize={!!editData} placeholder="Content (optional) — type # to insert tags..." />
 	{#if !editData}
-		<DefaultTagSuggestions category="note" bind:selectedTagIds />
+		<DefaultTagSuggestions category="note" bind:selectedTagIds {title} />
 	{/if}
 	<div class="button-row">
 		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>

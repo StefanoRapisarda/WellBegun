@@ -101,8 +101,8 @@ export async function activateFocus(
 		READING_KEYWORDS.some(kw => a.title.toLowerCase().includes(kw))
 	);
 	if (hasReadingActivity) {
-		visibleIds.push('source', 'readinglist');
-		slotOrder.push('source', 'readinglist');
+		visibleIds.push('source');
+		slotOrder.push('source');
 	}
 
 	configurePanels(visibleIds, slotOrder);

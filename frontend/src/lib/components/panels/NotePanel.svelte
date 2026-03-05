@@ -6,7 +6,7 @@
 	import { activities } from '$lib/stores/activities';
 	import { dateFilter, isItemVisible, selectedFilterTags, isTagVisible, showArchived, showActiveRelated, activeEntityTagIds, isActiveRelated } from '$lib/stores/dateFilter';
 	import { setLastUsedTags } from '$lib/stores/lastUsedTags';
-	import { deleteNote, archiveNote } from '$lib/api/notes';
+	import { deleteNote, activateNote, deactivateNote, archiveNote } from '$lib/api/notes';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
 	import PanelContainer from '../shared/PanelContainer.svelte';
 	import ConfirmDialog from '../shared/ConfirmDialog.svelte';
@@ -17,6 +17,7 @@
 	import Timestamp from '../shared/Timestamp.svelte';
 	import { selectEntity } from '$lib/stores/selectedEntity';
 	import { selectable } from '$lib/actions/selectable';
+
 
 	// Panel-level tag filter state
 	let panelSelectedTagIds = $state<number[]>([]);
@@ -78,6 +79,11 @@
 		confirmDelete = null;
 	}
 
+	async function toggleActive(id: number, isActive: boolean) {
+		if (isActive) { await deactivateNote(id); } else { await activateNote(id); }
+		await loadNotes();
+	}
+
 	async function handleArchive(id: number) {
 		await archiveNote(id);
 		await loadNotes();
@@ -107,8 +113,8 @@
 
 	async function handleCreate(noteId: number) {
 		// Get tags for active projects and activities
-		const activeProjectIds = $projects.filter(p => p.is_active).map(p => p.id);
-		const activeActivityIds = $activities.filter(a => a.is_active).map(a => a.id);
+		const activeProjectIds = $projects.filter(p => p.is_active && !p.is_archived).map(p => p.id);
+		const activeActivityIds = $activities.filter(a => a.is_active && !a.is_archived).map(a => a.id);
 
 		const activeEntityTags = $tags.filter(t =>
 			(t.entity_type === 'project' && t.entity_id && activeProjectIds.includes(t.entity_id)) ||
@@ -168,6 +174,9 @@
 			<div class="item" class:is-archived={note.is_archived} use:selectable={{ entityType: 'note', entityId: note.id }}>
 				<div class="item-actions">
 					<button class="btn-tags" onclick={() => toggleExpand(note.id)}>Tags</button>
+					<button class="btn-active" class:active={note.is_active} onclick={() => toggleActive(note.id, note.is_active)}>
+						{note.is_active ? 'Active' : 'Inactive'}
+					</button>
 					<button class="btn-archive" onclick={() => handleArchive(note.id)}>Archive</button>
 					<button class="btn-delete" onclick={() => (confirmDelete = note.id)}>Delete</button>
 				</div>
@@ -228,10 +237,14 @@
 	.item-desc { font-size: 0.8rem; color: #6b7280; margin: 8px 0 0; white-space: pre-wrap; }
 	.tag-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 	.btn-tags { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; border: 1px solid #d1d5db; cursor: pointer; background: #f9fafb; color: #6b7280; }
+	.btn-active { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; border: 1px solid #d1d5db; cursor: pointer; background: #f3f4f6; color: #6b7280; }
+	.btn-active.active { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
 	.btn-archive { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; border: 1px solid #d1d5db; cursor: pointer; background: #fef3c7; color: #92400e; }
 	.btn-delete { font-size: 0.75rem; padding: 2px 8px; background: #fee2e2; color: #ef4444; border: 1px solid #fecaca; border-radius: 4px; cursor: pointer; }
 	.tag-section { margin-top: 8px; padding: 8px; background: #f9fafb; border-radius: 6px; }
 	.empty { text-align: center; color: #9ca3af; font-size: 0.875rem; }
 	.is-archived .item-card { opacity: 0.55; border-style: dashed; }
 	.archived-badge { font-size: 0.55rem; padding: 1px 5px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; flex-shrink: 0; }
+	.btn-icon-nav { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 1px solid #d1d5db; border-radius: 4px; background: white; cursor: pointer; color: #9ca3af; transition: all 0.15s; }
+	.btn-icon-nav:hover { border-color: #9ca3af; color: #6b7280; background: #f3f4f6; }
 </style>

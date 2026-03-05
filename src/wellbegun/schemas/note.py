@@ -17,6 +17,7 @@ class NoteOut(BaseModel):
     id: int
     title: str
     content: str | None = None
+    is_active: bool
     is_archived: bool
     created_at: datetime
     updated_at: datetime

@@ -16,7 +16,7 @@ export interface AppContext {
 	allProjects: { id: number; title: string; is_active: boolean }[];
 	allActivities: { id: number; title: string; is_active: boolean; status: string }[];
 	recentNotes: { id: number; content: string }[];
-	recentLogs: { id: number; title: string; log_type: string }[];
+	recentLogs: { id: number; title: string }[];
 	tagCount: number;
 	sourceCount: number;
 	actorCount: number;
@@ -63,8 +63,7 @@ export function getAppContext(): AppContext {
 		})),
 		recentLogs: logList.slice(0, 5).map(l => ({
 			id: l.id,
-			title: l.title,
-			log_type: l.log_type
+			title: l.title
 		})),
 		tagCount: tagList.length,
 		sourceCount: sourceList.length,
@@ -104,7 +103,7 @@ export function formatContextForAI(context: AppContext): string {
 
 	if (context.recentLogs.length > 0) {
 		lines.push('Recent logs:');
-		context.recentLogs.forEach(l => lines.push(`  - [${l.log_type}] ${l.title}`));
+		context.recentLogs.forEach(l => lines.push(`  - ${l.title}`));
 	}
 
 	lines.push(`Stats: ${context.tagCount} tags, ${context.sourceCount} sources, ${context.actorCount} actors`);

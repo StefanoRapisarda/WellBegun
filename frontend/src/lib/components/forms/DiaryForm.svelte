@@ -72,7 +72,6 @@
 			logId = editData.id;
 		} else {
 			const created = await createLog({
-				log_type: 'diary',
 				title: title.trim(),
 				content: content.trim() || undefined,
 				location: location.trim() || undefined,
@@ -119,7 +118,7 @@
 	<input type="text" bind:value={location} placeholder="Location" class="field-input" />
 	<HashtagTextarea bind:value={content} rows={editData ? 4 : 2} autoSize={!!editData} placeholder="Content (optional) — type # to insert tags" />
 	{#if !editData}
-		<DefaultTagSuggestions category="log" bind:selectedTagIds />
+		<DefaultTagSuggestions category="log" bind:selectedTagIds {title} />
 	{/if}
 	<div class="emoji-row">
 		<span class="emoji-label">Mood</span>

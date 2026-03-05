@@ -6,28 +6,38 @@
 		{ type: 'activity', label: '+Activity', color: '#b5838d' },
 		{ type: 'source', label: '+Source', color: '#c9a227' },
 		{ type: 'actor', label: '+Actor', color: '#8b4557' },
-		{ type: 'reading_list', label: '+ReadList', color: '#5f9ea0' },
-		{ type: 'plan', label: '+Plan', color: '#6b8ba3' }
+		{ type: 'plan', label: '+Plan', color: '#6b8ba3' },
+		{ type: 'collection', label: '+Collection', color: '#7c6f9e' }
 	];
 
 	let {
 		zoom,
 		filterOpen = false,
+		editorOpen = false,
+		selectActive = false,
 		onAddEntity,
 		onZoomIn,
 		onZoomOut,
 		onZoomFit,
 		onToggleFilter,
-		onSwitchToCards
+		onToggleEditor,
+		onSwitchToCards,
+		onScreenshot,
+		onToggleSelect
 	}: {
 		zoom: number;
 		filterOpen?: boolean;
+		editorOpen?: boolean;
+		selectActive?: boolean;
 		onAddEntity: (entityType: string) => void;
 		onZoomIn: () => void;
 		onZoomOut: () => void;
 		onZoomFit: () => void;
 		onToggleFilter: () => void;
+		onToggleEditor?: () => void;
 		onSwitchToCards?: () => void;
+		onScreenshot?: () => void;
+		onToggleSelect?: () => void;
 	} = $props();
 
 	let zoomPct = $derived(Math.round(zoom * 100));
@@ -50,6 +60,40 @@
 		<span class="zoom-pct">{zoomPct}%</span>
 		<button class="zoom-btn" onclick={onZoomIn} title="Zoom in">+</button>
 		<button class="zoom-btn fit-btn" onclick={onZoomFit} title="Fit to view">Fit</button>
+		{#if onScreenshot}
+			<button class="zoom-btn screenshot-btn" onclick={onScreenshot} title="Save as PNG">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+					<circle cx="12" cy="13" r="4"/>
+				</svg>
+			</button>
+		{/if}
+		{#if onToggleSelect}
+			<button
+				class="zoom-btn select-btn"
+				class:active={selectActive}
+				onclick={onToggleSelect}
+				title="Rectangular selection (or hold Shift)"
+			>
+				<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+					<rect x="1" y="1" width="12" height="12" stroke-dasharray="3 2" rx="1" />
+					<path d="M10 7L13 10M13 10L10 13M13 10H8" stroke-linecap="round" stroke-linejoin="round" />
+				</svg>
+			</button>
+		{/if}
+		{#if onToggleEditor}
+			<button
+				class="zoom-btn editor-btn"
+				class:active={editorOpen}
+				onclick={onToggleEditor}
+				title="Toggle card editor"
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+					<path d="m15 5 4 4"/>
+				</svg>
+			</button>
+		{/if}
 		<button
 			class="zoom-btn filter-btn"
 			class:active={filterOpen}
@@ -140,6 +184,37 @@
 		color: #6b7280;
 		min-width: 40px;
 		text-align: center;
+	}
+	.screenshot-btn {
+		width: auto;
+		padding: 0 6px;
+		margin-left: 4px;
+	}
+	.select-btn {
+		width: auto;
+		padding: 0 6px;
+		margin-left: 4px;
+	}
+	.select-btn.active {
+		background: #3b82f6;
+		color: white;
+		border-color: #3b82f6;
+	}
+	.select-btn.active:hover {
+		background: #2563eb;
+	}
+	.editor-btn {
+		width: auto;
+		padding: 0 6px;
+		margin-left: 4px;
+	}
+	.editor-btn.active {
+		background: #374151;
+		color: white;
+		border-color: #374151;
+	}
+	.editor-btn.active:hover {
+		background: #4b5563;
 	}
 	.filter-btn {
 		width: auto;

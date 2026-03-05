@@ -111,7 +111,10 @@
 			/^(did|do|does|have|has|had|was|were|is|are|can|could|what|when|where|which|who|how many|how much|any|show me|find|search|list)\b/,
 			/\?$/,
 			/\b(today|yesterday|this week|last week|this month)\b.*\b(meeting|note|log|activity|project|task)/,
-			/\b(meeting|note|log|activity|project|task).*\b(today|yesterday|this week|last week|this month)\b/
+			/\b(meeting|note|log|activity|project|task).*\b(today|yesterday|this week|last week|this month)\b/,
+			// Entity type words combined with a status keyword → treat as a query
+			/\b(activities|activity|tasks?|notes?|logs?|projects?|sources?|actors?|meetings?|plans?)\b.*\b(todo|in_progress|done|on_hold|cancelled|planned|active|completed|to_read|reading|read)\b/,
+			/\b(todo|in_progress|done|on_hold|cancelled|planned|active|completed|to_read|reading|read)\b.*\b(activities|activity|tasks?|notes?|logs?|projects?|sources?|actors?|meetings?|plans?)\b/
 		];
 		return questionPatterns.some(p => p.test(lower));
 	}
@@ -363,7 +366,7 @@ Or just mention a project/activity name and I'll try to activate it!`;
 
 		// Panel visibility - flexible matching
 		const panelNames = ['project', 'projects', 'note', 'notes', 'log', 'logs', 'activity', 'activities',
-			'source', 'sources', 'actor', 'actors', 'reading', 'readinglist', 'plan', 'plans', 'wildtag', 'tag', 'tags'];
+			'source', 'sources', 'actor', 'actors', 'plan', 'plans', 'wildtag', 'tag', 'tags'];
 
 		for (const panel of panelNames) {
 			if (lower.includes(panel)) {
@@ -375,7 +378,6 @@ Or just mention a project/activity name and I'll try to activate it!`;
 				if (panel === 'activities') panelId = 'activity';
 				if (panel === 'sources') panelId = 'source';
 				if (panel === 'actors') panelId = 'actor';
-				if (panel === 'reading') panelId = 'readinglist';
 				if (panel === 'plans') panelId = 'plan';
 				if (panel === 'tag' || panel === 'tags') panelId = 'wildtag';
 
@@ -405,8 +407,7 @@ Or just mention a project/activity name and I'll try to activate it!`;
 			if (content.trim()) {
 				const result = await executeAction('create_log', {
 					title: content.substring(0, 50),
-					content: content,
-					log_type: 'diary'
+					content: content
 				});
 				return result.message;
 			}

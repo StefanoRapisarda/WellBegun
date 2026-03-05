@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 
 from wellbegun.models import (
     Note, Log, Project, Activity, Source, Actor, Tag, EntityTag,
-    ReadingList, Plan,
+    Plan, Collection,
 )
 
 
-ALL_TYPES = ["note", "log", "project", "activity", "source", "actor", "reading_list", "plan"]
+ALL_TYPES = ["note", "log", "project", "activity", "source", "actor", "plan", "collection"]
 
 MODEL_CONFIG = {
     "note": {
@@ -29,18 +29,21 @@ MODEL_CONFIG = {
         "text_fields": ["title", "description"],
         "title_field": "title",
         "desc_field": "description",
+        "status_field": "status",
     },
     "activity": {
         "model": Activity,
         "text_fields": ["title", "description"],
         "title_field": "title",
         "desc_field": "description",
+        "status_field": "status",
     },
     "source": {
         "model": Source,
         "text_fields": ["title", "description"],
         "title_field": "title",
         "desc_field": "description",
+        "status_field": "status",
     },
     "actor": {
         "model": Actor,
@@ -48,22 +51,23 @@ MODEL_CONFIG = {
         "title_field": "full_name",
         "desc_field": "role",
     },
-    "reading_list": {
-        "model": ReadingList,
-        "text_fields": ["title", "description"],
-        "title_field": "title",
-        "desc_field": "description",
-    },
     "plan": {
         "model": Plan,
         "text_fields": ["title", "description", "motivation", "outcome"],
+        "title_field": "title",
+        "desc_field": "description",
+        "status_field": "status",
+    },
+    "collection": {
+        "model": Collection,
+        "text_fields": ["title", "description"],
         "title_field": "title",
         "desc_field": "description",
     },
 }
 
 
-ARCHIVABLE_TYPES = {"project", "log", "note", "activity", "source", "actor", "plan"}
+ARCHIVABLE_TYPES = {"project", "log", "note", "activity", "source", "actor", "plan", "collection"}
 
 
 def search(
@@ -75,6 +79,7 @@ def search(
     tag_ids: list[int] | None = None,
     tag_mode: str = "or",
     include_archived: bool = False,
+    status_values: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -105,6 +110,11 @@ def search(
         # Archived filter
         if not include_archived and entity_type in ARCHIVABLE_TYPES:
             q = q.filter(model.is_archived == False)  # noqa: E712
+
+        # Status filter
+        if status_values and config.get("status_field"):
+            status_col = getattr(model, config["status_field"])
+            q = q.filter(status_col.in_(status_values))
 
         # Date filter
         if start_dt:

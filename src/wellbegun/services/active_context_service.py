@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 
 from wellbegun.models.actor import Actor
+from wellbegun.models.collection import Collection
 from wellbegun.models.log import Activity, Log
 from wellbegun.models.project import Project
 from wellbegun.models.plan import Plan
-from wellbegun.models.reading_list import ReadingList
 from wellbegun.models.source import Source
 from wellbegun.models.tag import Tag
 from wellbegun.services.tag_service import attach_tag
@@ -12,13 +12,13 @@ from wellbegun.services.tag_service import attach_tag
 
 def get_active_context(db: Session) -> dict:
     return {
-        "projects": db.query(Project).filter(Project.is_active.is_(True)).all(),
-        "logs": db.query(Log).filter(Log.is_active.is_(True)).all(),
-        "activities": db.query(Activity).filter(Activity.is_active.is_(True)).all(),
-        "sources": db.query(Source).filter(Source.is_active.is_(True)).all(),
-        "actors": db.query(Actor).filter(Actor.is_active.is_(True)).all(),
-        "reading_lists": db.query(ReadingList).filter(ReadingList.is_active.is_(True)).all(),
-        "plans": db.query(Plan).filter(Plan.is_active.is_(True)).all(),
+        "projects": db.query(Project).filter(Project.is_active.is_(True), Project.is_archived.is_(False)).all(),
+        "logs": db.query(Log).filter(Log.is_active.is_(True), Log.is_archived.is_(False)).all(),
+        "activities": db.query(Activity).filter(Activity.is_active.is_(True), Activity.is_archived.is_(False)).all(),
+        "sources": db.query(Source).filter(Source.is_active.is_(True), Source.is_archived.is_(False)).all(),
+        "actors": db.query(Actor).filter(Actor.is_active.is_(True), Actor.is_archived.is_(False)).all(),
+        "plans": db.query(Plan).filter(Plan.is_active.is_(True), Plan.is_archived.is_(False)).all(),
+        "collections": db.query(Collection).filter(Collection.is_active.is_(True), Collection.is_archived.is_(False)).all(),
     }
 
 
@@ -35,8 +35,8 @@ def attach_active_context_tags(db: Session, target_type: str, target_id: int) ->
         ("activity", [(a.id, "activity") for a in active["activities"]]),
         ("source", [(s.id, "source") for s in active["sources"]]),
         ("actor", [(a.id, "actor") for a in active["actors"]]),
-        ("reading_list", [(r.id, "reading_list") for r in active["reading_lists"]]),
         ("plan", [(p.id, "plan") for p in active["plans"]]),
+        ("collection", [(c.id, "collection") for c in active["collections"]]),
     ]
 
     for entity_type, items in entity_specs:

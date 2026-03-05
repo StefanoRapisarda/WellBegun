@@ -19,7 +19,6 @@
 		{ value: 'source', label: 'Source' },
 		{ value: 'actor', label: 'Actor' },
 		{ value: 'project', label: 'Project' },
-		{ value: 'readinglist', label: 'Reading List' },
 		{ value: 'plan', label: 'Plan' },
 	];
 

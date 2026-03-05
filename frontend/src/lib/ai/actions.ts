@@ -22,7 +22,7 @@ export interface ActionResult {
 export const actionDefinitions = [
 	{
 		name: 'switch_panel',
-		description: 'Show or hide a specific panel. Available panels: project, activity, note, log, source, actor, readinglist, plan, wildtag',
+		description: 'Show or hide a specific panel. Available panels: project, activity, note, log, source, actor, plan, wildtag',
 		parameters: {
 			panel_id: { type: 'string', description: 'The panel ID to toggle' },
 			visible: { type: 'boolean', description: 'Whether to show (true) or hide (false) the panel' }
@@ -68,8 +68,7 @@ export const actionDefinitions = [
 		description: 'Create a new log entry',
 		parameters: {
 			title: { type: 'string', description: 'Log title' },
-			content: { type: 'string', description: 'Log content' },
-			log_type: { type: 'string', description: 'Type: diary, meeting, idea, reflection' }
+			content: { type: 'string', description: 'Log content' }
 		}
 	},
 	{
@@ -156,11 +155,10 @@ export const actions = {
 		return { success: true, message: 'Note created' };
 	},
 
-	create_log: async (args: { title: string; content: string; log_type?: string }): Promise<ActionResult> => {
+	create_log: async (args: { title: string; content: string }): Promise<ActionResult> => {
 		await createLog({
 			title: args.title,
-			content: args.content,
-			log_type: args.log_type || 'diary'
+			content: args.content
 		});
 		await loadLogs();
 		return { success: true, message: `Log "${args.title}" created` };

@@ -6,15 +6,11 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
-	import { readingLists } from '$lib/stores/readingLists';
-	import { tags } from '$lib/stores/tags';
-	import { focusSelection, activateFocus, isFocusActive, deactivateFocus } from '$lib/stores/focus';
-	import { getEntityTags } from '$lib/api/tags';
-	import { activateProject } from '$lib/api/projects';
-	import { activateActivity } from '$lib/api/activities';
-	import { loadProjects } from '$lib/stores/projects';
-	import { loadActivities } from '$lib/stores/activities';
-	import type { Note, Project, Activity, Source, Actor, ReadingListItem, Log, Tag } from '$lib/types';
+	import { plans } from '$lib/stores/plans';
+	import { workspaces, setActiveWorkspace } from '$lib/stores/workspaces';
+	import { createWorkspace } from '$lib/api/workspaces';
+	import { activeTab } from '$lib/stores/activeTab';
+	import type { Note, Project, Activity, Source, Actor, Log, Plan, Workspace } from '$lib/types';
 
 	// Only render data grid after mount to avoid SSR issues
 	let ready = $state(false);
@@ -26,59 +22,14 @@
 	let logsData = $state<Log[]>([]);
 	let sourcesData = $state<Source[]>([]);
 	let actorsData = $state<Actor[]>([]);
-	let readingListsData = $state<ReadingListItem[]>([]);
-	let tagsData = $state<Tag[]>([]);
+	let plansData = $state<Plan[]>([]);
 
-	// Focus selection state
-	let selectedProjectIds = $state<number[]>([]);
-	let selectedActivityIds = $state<number[]>([]);
-
-	// Map: activityId -> set of projectIds it's tagged with
-	let activityProjectMap = $state<Record<number, number[]>>({});
-
-	// Map: projectId -> project-category tags (e.g. Personal, Work)
-	let projectTagMap = $state<Record<number, Tag[]>>({});
+	// Workspaces state
+	let workspacesData = $state<Workspace[]>([]);
+	let newWsName = $state('');
 
 	// Pick random fact on client only to avoid SSR hydration mismatch
 	let factIndex = $state(-1);
-
-	// Non-archived projects and activities for focus card
-	let focusProjects = $derived(projectsData.filter(p => !p.is_archived));
-	let allFocusActivities = $derived(activitiesData.filter(a => !a.is_archived));
-
-	// Visible activities depend on selected projects
-	let visibleActivities = $derived.by(() => {
-		if (selectedProjectIds.length === 0) {
-			// No project selected: show activities not tagged to any project
-			return allFocusActivities.filter(a => {
-				const projIds = activityProjectMap[a.id];
-				return !projIds || projIds.length === 0;
-			});
-		}
-		// Project(s) selected: show activities tagged with any selected project
-		return allFocusActivities.filter(a => {
-			const projIds = activityProjectMap[a.id];
-			if (!projIds) return false;
-			return projIds.some(pid => selectedProjectIds.includes(pid));
-		});
-	});
-
-	// Project filter by tag (All / Personal / Work / etc.)
-	let projectFilter = $state<string | null>(null);
-
-	// Fixed project filter options
-	const projectFilterOptions = ['Personal', 'Work'];
-
-	// Filtered projects based on selected filter
-	let filteredFocusProjects = $derived.by(() => {
-		if (!projectFilter) return focusProjects;
-		return focusProjects.filter(p => {
-			const tags = projectTagMap[p.id] || [];
-			return tags.some(t => t.name === projectFilter);
-		});
-	});
-
-	let hasSelection = $derived(selectedProjectIds.length > 0 || selectedActivityIds.length > 0);
 
 	// Activity history chart: count entity creations per day over last 14 days
 	let activityHistory = $derived.by(() => {
@@ -112,88 +63,103 @@
 
 	let maxCount = $derived(Math.max(1, ...activityHistory.map(d => d.count)));
 
-	function toggleProject(id: number) {
-		if (selectedProjectIds.includes(id)) {
-			selectedProjectIds = selectedProjectIds.filter(x => x !== id);
-		} else {
-			selectedProjectIds = [...selectedProjectIds, id];
+	// ── Recent Activity Feed ──
+	const TYPE_COLORS: Record<string, string> = {
+		project: '#5c7a99',
+		activity: '#8b7355',
+		note: '#e6b800',
+		log: '#6366f1',
+		source: '#059669',
+		actor: '#8b5cf6',
+		plan: '#ec4899',
+	};
+
+	const TYPE_LABELS: Record<string, string> = {
+		project: 'Project',
+		activity: 'Activity',
+		note: 'Note',
+		log: 'Log',
+		source: 'Source',
+		actor: 'Actor',
+		plan: 'Plan',
+	};
+
+	let recentItems = $derived.by(() => {
+		const items: Array<{ type: string; title: string; date: string }> = [];
+
+		for (const p of projectsData) {
+			items.push({ type: 'project', title: p.title, date: p.updated_at || p.created_at });
 		}
-		// Clear activity selection when project selection changes (activities list changes)
-		selectedActivityIds = [];
-		// If nothing is selected, clear the focus entirely
-		if (selectedProjectIds.length === 0) {
-			deactivateFocus();
+		for (const a of activitiesData) {
+			items.push({ type: 'activity', title: a.title, date: a.updated_at || a.created_at });
+		}
+		for (const n of notesData) {
+			items.push({ type: 'note', title: n.title || (n.content || '').slice(0, 50) || 'Untitled', date: n.updated_at || n.created_at });
+		}
+		for (const l of logsData) {
+			items.push({ type: 'log', title: l.title || 'Untitled log', date: l.updated_at || l.created_at });
+		}
+		for (const s of sourcesData) {
+			items.push({ type: 'source', title: s.title, date: s.updated_at || s.created_at });
+		}
+		for (const a of actorsData) {
+			items.push({ type: 'actor', title: a.full_name, date: a.updated_at || a.created_at });
+		}
+		for (const p of plansData) {
+			items.push({ type: 'plan', title: p.title, date: p.updated_at || p.created_at });
+		}
+
+		items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+		return items.slice(0, 12);
+	});
+
+	// ── "Today" summary for momentum card ──
+	let todaySummary = $derived.by(() => {
+		const todayIso = new Date().toISOString().slice(0, 10);
+		let created = 0;
+		let modified = 0;
+
+		const countItem = (createdAt: string, updatedAt: string) => {
+			if (createdAt.slice(0, 10) === todayIso) created++;
+			else if (updatedAt.slice(0, 10) === todayIso) modified++;
+		};
+
+		for (const p of projectsData) countItem(p.created_at, p.updated_at);
+		for (const a of activitiesData) countItem(a.created_at, a.updated_at);
+		for (const n of notesData) countItem(n.created_at, n.updated_at);
+		for (const l of logsData) countItem(l.created_at, l.updated_at);
+		for (const s of sourcesData) countItem(s.created_at, s.updated_at);
+		for (const a of actorsData) countItem(a.created_at, a.updated_at);
+		for (const p of plansData) countItem(p.created_at, p.updated_at);
+
+		return { created, modified, total: created + modified };
+	});
+
+	// Total entities across all types
+	let totalEntities = $derived(
+		projectsData.length + activitiesData.length + notesData.length +
+		logsData.length + sourcesData.length + actorsData.length + plansData.length
+	);
+
+	async function handleOpenWorkspace(id: number) {
+		await setActiveWorkspace(id);
+		activeTab.set('workspace');
+	}
+
+	async function handleCreateWorkspace() {
+		if (!newWsName.trim()) return;
+		try {
+			const ws = await createWorkspace({ name: newWsName.trim() });
+			newWsName = '';
+			await setActiveWorkspace(ws.id);
+			activeTab.set('workspace');
+		} catch (e) {
+			console.error('Failed to create workspace:', e);
 		}
 	}
 
-	function toggleActivity(id: number) {
-		if (selectedActivityIds.includes(id)) {
-			selectedActivityIds = selectedActivityIds.filter(x => x !== id);
-		} else {
-			selectedActivityIds = [...selectedActivityIds, id];
-		}
-		// If nothing is selected, clear the focus entirely
-		if (selectedProjectIds.length === 0 && selectedActivityIds.length === 0) {
-			deactivateFocus();
-		}
-	}
-
-	async function handleLetsBegin() {
-		// Activate any selected inactive projects/activities
-		const inactiveProjects = projectsData.filter(p => selectedProjectIds.includes(p.id) && !p.is_active);
-		const inactiveActivities = activitiesData.filter(a => selectedActivityIds.includes(a.id) && !a.is_active);
-
-		await Promise.allSettled([
-			...inactiveProjects.map(p => activateProject(p.id)),
-			...inactiveActivities.map(a => activateActivity(a.id)),
-		]);
-
-		// Reload stores so Input panels see updated is_active state
-		if (inactiveProjects.length > 0) await loadProjects();
-		if (inactiveActivities.length > 0) await loadActivities();
-
-		await activateFocus(
-			{ projectIds: selectedProjectIds, activityIds: selectedActivityIds },
-			tagsData,
-			projectsData,
-			activitiesData
-		);
-	}
-
-	// Fetch project-category tags (Personal, Work, etc.) for each project
-	async function loadProjectTagMap(projectList: Project[]) {
-		const map: Record<number, Tag[]> = {};
-		await Promise.all(
-			projectList.filter(p => !p.is_archived).map(async (project) => {
-				try {
-					const pTags = await getEntityTags('project', project.id);
-					// Keep only project-category tags (not entity-linked tags from other entities)
-					map[project.id] = pTags.filter(t => t.category === 'project' && t.entity_id === null);
-				} catch {
-					map[project.id] = [];
-				}
-			})
-		);
-		projectTagMap = map;
-	}
-
-	// Fetch activity-project tag mappings
-	async function loadActivityProjectMap(activityList: Activity[]) {
-		const map: Record<number, number[]> = {};
-		await Promise.all(
-			activityList.filter(a => !a.is_archived).map(async (activity) => {
-				try {
-					const actTags = await getEntityTags('activity', activity.id);
-					const projIds = actTags
-						.filter(t => t.entity_type === 'project' && t.entity_id != null)
-						.map(t => t.entity_id as number);
-					map[activity.id] = projIds;
-				} catch {
-					map[activity.id] = [];
-				}
-			})
-		);
-		activityProjectMap = map;
+	function handleWsKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') handleCreateWorkspace();
 	}
 
 	onMount(() => {
@@ -202,35 +168,14 @@
 
 		// Subscribe to stores only on client
 		const unsubs = [
-			projects.subscribe(v => {
-				projectsData = v ?? [];
-				if (v && v.length > 0) {
-					loadProjectTagMap(v);
-				}
-			}),
-			activities.subscribe(v => {
-				activitiesData = v ?? [];
-				// Reload activity-project map when activities change
-				if (v && v.length > 0) {
-					loadActivityProjectMap(v);
-				}
-			}),
+			workspaces.subscribe(v => workspacesData = v ?? []),
+			projects.subscribe(v => projectsData = v ?? []),
+			activities.subscribe(v => activitiesData = v ?? []),
 			notes.subscribe(v => notesData = v ?? []),
 			logs.subscribe(v => logsData = v ?? []),
 			sources.subscribe(v => sourcesData = v ?? []),
 			actors.subscribe(v => actorsData = v ?? []),
-			readingLists.subscribe(v => readingListsData = v ?? []),
-			tags.subscribe(v => tagsData = v ?? []),
-			focusSelection.subscribe(v => {
-				// Sync local selection with store
-				if (isFocusActive(v)) {
-					selectedProjectIds = v.projectIds;
-					selectedActivityIds = v.activityIds;
-				} else {
-					selectedProjectIds = [];
-					selectedActivityIds = [];
-				}
-			}),
+			plans.subscribe(v => plansData = v ?? []),
 		];
 		ready = true;
 		return () => unsubs.forEach(u => u());
@@ -289,110 +234,108 @@
 		{/if}
 	</header>
 		<div class="dashboard-grid">
+			<!-- Workspaces Quick Access -->
+			<section class="card workspaces-card">
+				<div class="workspaces-header">
+					<h2>Workspaces</h2>
+					{#if workspacesData.length > 0}
+						<button class="ws-view-all" onclick={() => activeTab.set('workspace')}>View all</button>
+					{/if}
+				</div>
+				{#if workspacesData.length === 0}
+					<div class="ws-empty">
+						<p class="ws-empty-text">No workspaces yet. Create one to start organising your knowledge.</p>
+						<div class="ws-new-row ws-new-centered">
+							<input
+								type="text"
+								class="ws-new-input"
+								placeholder="Workspace name..."
+								bind:value={newWsName}
+								onkeydown={handleWsKeydown}
+							/>
+							<button class="ws-new-btn" onclick={handleCreateWorkspace} disabled={!newWsName.trim()}>+</button>
+						</div>
+					</div>
+				{:else}
+					<div class="ws-cards">
+						{#each workspacesData as ws (ws.id)}
+							<button class="ws-card-item" onclick={() => handleOpenWorkspace(ws.id)}>
+								<span class="ws-card-name">{ws.name}</span>
+								<span class="ws-card-meta">{ws.items.length} items &middot; {formatRelativeTime(ws.last_opened_at)}</span>
+								{#if ws.description}
+									<span class="ws-card-desc">{ws.description.length > 60 ? ws.description.slice(0, 60) + '...' : ws.description}</span>
+								{/if}
+							</button>
+						{/each}
+						<div class="ws-new-row">
+							<input
+								type="text"
+								class="ws-new-input"
+								placeholder="New workspace..."
+								bind:value={newWsName}
+								onkeydown={handleWsKeydown}
+							/>
+							<button class="ws-new-btn" onclick={handleCreateWorkspace} disabled={!newWsName.trim()}>+</button>
+						</div>
+					</div>
+				{/if}
+			</section>
+
 			<!-- Stats Overview -->
 			<section class="card stats-card">
 				<h2>Overview</h2>
 				<div class="stats-grid">
 					<div class="stat">
-						<span class="stat-value">{projectsData.filter(p => p.is_active).length}</span>
-						<span class="stat-label">Active Projects</span>
+						<span class="stat-value">{projectsData.filter(p => p.status === 'in_progress' || p.is_active).length}</span>
+						<span class="stat-label">In-Progress Projects</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{activitiesData.filter(a => a.is_active).length}</span>
-						<span class="stat-label">Active Activities</span>
+						<span class="stat-value">{activitiesData.filter(a => a.status === 'in_progress').length}</span>
+						<span class="stat-label">In-Progress Activities</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{notesData.length}</span>
-						<span class="stat-label">Notes</span>
-					</div>
-					<div class="stat">
-						<span class="stat-value">{logsData.length}</span>
-						<span class="stat-label">Logs</span>
+						<span class="stat-value">{plansData.filter(p => p.status === 'in_progress' || p.is_active).length}</span>
+						<span class="stat-label">In-Progress Plans</span>
 					</div>
 				</div>
 				<div class="stats-secondary">
-					<span>{projectsData.length} projects</span>
+					<span>{notesData.length} notes</span>
+					<span>{logsData.length} logs</span>
 					<span>{sourcesData.length} sources</span>
 					<span>{actorsData.length} actors</span>
-					<span>{readingListsData.length} reading</span>
 				</div>
 			</section>
 
-			<!-- Focus Launcher -->
-			<section class="card focus-card">
-				<div class="focus-header">
-					<h2>What would you like to work on today?</h2>
-					{#if hasSelection}
-						<button class="lets-begin-btn" onclick={handleLetsBegin}>
-							Let's Begin
-						</button>
-					{/if}
+			<!-- Today's Momentum + Recent Activity -->
+			<section class="card momentum-card">
+				<div class="momentum-header">
+					<h2>Knowledge Pulse</h2>
+					<div class="momentum-today">
+						{#if todaySummary.total > 0}
+							<span class="pulse-badge">
+								{todaySummary.created > 0 ? `${todaySummary.created} created` : ''}
+								{todaySummary.created > 0 && todaySummary.modified > 0 ? ' · ' : ''}
+								{todaySummary.modified > 0 ? `${todaySummary.modified} updated` : ''}
+								today
+							</span>
+						{:else}
+							<span class="pulse-badge quiet">Nothing yet today</span>
+						{/if}
+						<span class="pulse-total">{totalEntities} total items</span>
+					</div>
 				</div>
-				{#if focusProjects.length === 0 && allFocusActivities.length === 0}
-					<p class="empty-msg">No projects or activities. Start something new!</p>
+				{#if recentItems.length === 0}
+					<p class="empty-msg">No activity yet. Start capturing your knowledge!</p>
 				{:else}
-					<div class="focus-content">
-						<div class="focus-group">
-							<div class="focus-group-header">
-								<h3>Projects</h3>
-								<div class="project-filters">
-									<button
-										class="filter-chip"
-										class:active={projectFilter === null}
-										onclick={() => (projectFilter = null)}
-									>All</button>
-									{#each projectFilterOptions as opt}
-										<button
-											class="filter-chip"
-											class:active={projectFilter === opt}
-											onclick={() => (projectFilter = projectFilter === opt ? null : opt)}
-										>{opt}</button>
-									{/each}
-								</div>
+					<div class="activity-feed">
+						{#each recentItems as item}
+							<div class="feed-item">
+								<span class="feed-dot" style:background={TYPE_COLORS[item.type] ?? '#9ca3af'}></span>
+								<span class="feed-type" style:color={TYPE_COLORS[item.type] ?? '#9ca3af'}>{TYPE_LABELS[item.type] ?? item.type}</span>
+								<span class="feed-title">{item.title}</span>
+								<span class="feed-time">{formatRelativeTime(item.date)}</span>
 							</div>
-							{#if filteredFocusProjects.length > 0}
-								<div class="focus-cards-scroll">
-									<div class="focus-cards">
-										{#each filteredFocusProjects as project (project.id)}
-											<button
-												class="focus-card-item project"
-												class:selected={selectedProjectIds.includes(project.id)}
-												onclick={() => toggleProject(project.id)}
-											>
-												<span class="focus-card-title">{project.title}</span>
-												{#if projectTagMap[project.id]?.length}
-													{#each projectTagMap[project.id] as tag (tag.id)}
-														<span class="project-tag">{tag.name}</span>
-													{/each}
-												{/if}
-											</button>
-										{/each}
-									</div>
-								</div>
-							{:else}
-								<p class="empty-msg">{projectFilter ? `No ${projectFilter} projects` : 'No projects yet'}</p>
-							{/if}
-						</div>
-						<div class="focus-group">
-							<h3>Activities {#if selectedProjectIds.length > 0}<span class="filter-hint">(filtered by project)</span>{/if}</h3>
-							{#if visibleActivities.length > 0}
-								<div class="focus-cards-scroll">
-									<div class="focus-cards">
-										{#each visibleActivities as activity (activity.id)}
-											<button
-												class="focus-card-item activity"
-												class:selected={selectedActivityIds.includes(activity.id)}
-												onclick={() => toggleActivity(activity.id)}
-											>
-												<span class="focus-card-title">{activity.title}</span>
-											</button>
-										{/each}
-									</div>
-								</div>
-							{:else}
-								<p class="empty-msg">{selectedProjectIds.length > 0 ? 'No activities for selected project' : 'No unlinked activities'}</p>
-							{/if}
-						</div>
+						{/each}
 					</div>
 				{/if}
 			</section>
@@ -427,26 +370,6 @@
 				</div>
 			</section>
 
-			<!-- Reading -->
-			<section class="card inspire-card">
-				<h2>Things to Explore</h2>
-				<div class="inspire-content">
-					{#if readingListsData.filter(r => r.status !== 'completed').length > 0}
-						<div class="inspire-group">
-							<h3>Reading</h3>
-							{#each readingListsData.filter(r => r.status !== 'completed').slice(0, 3) as item}
-								<div class="inspire-item">
-									<span class="inspire-icon">R</span>
-									<span class="inspire-title">{item.title}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
-					{#if readingListsData.filter(r => r.status !== 'completed').length === 0}
-						<p class="empty-msg">Add items to your reading list!</p>
-					{/if}
-				</div>
-			</section>
 		</div>
 	{:else}
 		<div class="loading">Loading dashboard...</div>
@@ -540,6 +463,7 @@
 	}
 	.stat {
 		text-align: center;
+		min-width: 100px;
 	}
 	.stat-value {
 		display: block;
@@ -561,148 +485,86 @@
 		padding-top: 10px;
 	}
 
-	/* Focus Card */
-	.focus-card {
+	/* Knowledge Pulse / Momentum Card */
+	.momentum-card {
 		grid-column: span 2;
 	}
-	.focus-header {
+	.momentum-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		margin-bottom: 4px;
+	}
+	.momentum-header h2 {
 		margin-bottom: 0;
 	}
-	.focus-header h2 {
-		margin-bottom: 0;
-		text-transform: none;
-		font-size: 0.95rem;
-		color: #374151;
-		letter-spacing: 0;
-	}
-	.lets-begin-btn {
-		padding: 6px 16px;
-		border: none;
-		border-radius: 6px;
-		background: #3b82f6;
-		color: white;
-		font-size: 0.8rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-	.lets-begin-btn:hover {
-		background: #2563eb;
-	}
-	.focus-content {
-		display: flex;
-		gap: 24px;
-		margin-top: 12px;
-	}
-	.focus-group {
-		flex: 1;
-		min-width: 0;
-	}
-	.focus-group-header {
+	.momentum-today {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 8px;
+		gap: 10px;
 	}
-	.focus-group-header h3 {
-		margin: 0;
-	}
-	.focus-group h3 {
+	.pulse-badge {
 		font-size: 0.7rem;
-		color: #9ca3af;
-		margin: 0 0 8px;
 		font-weight: 500;
-	}
-	.project-filters {
-		display: flex;
-		gap: 4px;
-	}
-	.filter-chip {
-		padding: 2px 8px;
-		border: 1px solid #e5e7eb;
+		color: #059669;
+		background: #ecfdf5;
+		padding: 3px 10px;
 		border-radius: 10px;
-		background: white;
-		cursor: pointer;
+	}
+	.pulse-badge.quiet {
+		color: #9ca3af;
+		background: #f9fafb;
+	}
+	.pulse-total {
 		font-size: 0.65rem;
 		color: #9ca3af;
-		transition: all 0.15s;
 	}
-	.filter-chip:hover {
-		background: #f3f4f6;
-		color: #6b7280;
-	}
-	.filter-chip.active {
-		background: #374151;
-		color: white;
-		border-color: #374151;
-	}
-	.filter-hint {
-		font-style: italic;
-		color: #d1d5db;
-	}
-	.focus-cards-scroll {
-		max-height: calc(100vh - 350px);
-		overflow-y: auto;
-	}
-	.focus-cards {
+	.activity-feed {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 2px;
+		max-height: 340px;
+		overflow-y: auto;
 	}
-	.focus-card-item {
+	.feed-item {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 8px 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 8px;
-		background: white;
-		cursor: pointer;
-		transition: all 0.15s;
-		text-align: left;
-		width: 100%;
+		padding: 6px 8px;
+		border-radius: 6px;
+		transition: background 0.12s;
 	}
-	.focus-card-item:hover {
+	.feed-item:hover {
 		background: #f9fafb;
 	}
-	.focus-card-item.project {
-		border-left: 3px solid #5c7a99;
+	.feed-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		flex-shrink: 0;
 	}
-	.focus-card-item.activity {
-		border-left: 3px solid #8b7355;
+	.feed-type {
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+		width: 56px;
+		flex-shrink: 0;
 	}
-	.focus-card-item.selected {
-		background: #eff6ff;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 1px #3b82f6;
-	}
-	.focus-card-item.selected.project {
-		border-left-color: #3b82f6;
-	}
-	.focus-card-item.selected.activity {
-		border-left-color: #3b82f6;
-	}
-	.focus-card-title {
-		font-size: 0.85rem;
-		color: #374151;
+	.feed-title {
 		flex: 1;
 		min-width: 0;
+		font-size: 0.82rem;
+		color: #374151;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.project-tag {
-		font-size: 0.6rem;
-		padding: 2px 7px;
-		border-radius: 8px;
-		font-weight: 500;
+	.feed-time {
+		font-size: 0.65rem;
+		color: #9ca3af;
 		flex-shrink: 0;
-		background: #f0f4f8;
-		color: #5c7a99;
-		border: 1px solid #dbe4ee;
+		white-space: nowrap;
 	}
 
 	/* Notes Card */
@@ -765,62 +627,139 @@
 		margin-top: 4px;
 	}
 
-	/* Inspire Card */
-	.inspire-card {
+	/* Workspaces Card */
+	.workspaces-card {
 		grid-column: span 3;
 	}
-	.inspire-content {
-		display: flex;
-		gap: 32px;
-	}
-	.inspire-group {
-		flex: 1;
-	}
-	.inspire-group h3 {
-		font-size: 0.7rem;
-		color: #9ca3af;
-		margin: 0 0 8px;
-		font-weight: 500;
-	}
-	.inspire-item {
+	.workspaces-header {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 6px 0;
+		justify-content: space-between;
 	}
-	.inspire-icon {
-		width: 20px;
-		height: 20px;
+	.workspaces-header h2 {
+		margin-bottom: 0;
+	}
+	.ws-view-all {
+		border: none;
+		background: none;
+		cursor: pointer;
+		font-size: 0.72rem;
+		color: #3b82f6;
+		font-weight: 500;
+		transition: color 0.15s;
+	}
+	.ws-view-all:hover {
+		color: #2563eb;
+	}
+	.ws-cards {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-top: 10px;
+	}
+	.ws-card-item {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 10px 14px;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		background: white;
+		cursor: pointer;
+		transition: all 0.15s;
+		text-align: left;
+		min-width: 140px;
+	}
+	.ws-card-item:hover {
+		background: #f9fafb;
+		border-color: #d1d5db;
+	}
+	.ws-card-name {
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: #374151;
+	}
+	.ws-card-meta {
+		font-size: 0.65rem;
+		color: #9ca3af;
+	}
+	.ws-card-desc {
+		font-size: 0.7rem;
+		color: #9ca3af;
+		line-height: 1.3;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ws-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		padding: 16px 0 8px;
+	}
+	.ws-empty-text {
+		font-size: 0.85rem;
+		color: #9ca3af;
+		margin: 0;
+	}
+	.ws-new-centered {
+		justify-content: center;
+	}
+	.ws-new-row {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+	}
+	.ws-new-input {
+		padding: 8px 10px;
+		border: 1px dashed #d1d5db;
+		border-radius: 8px;
+		font-size: 0.8rem;
+		outline: none;
+		width: 140px;
+		transition: border-color 0.15s;
+	}
+	.ws-new-input:focus {
+		border-color: #6b7280;
+		border-style: solid;
+	}
+	.ws-new-btn {
+		width: 30px;
+		height: 30px;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		background: white;
+		cursor: pointer;
+		font-size: 1rem;
+		color: #6b7280;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: #e5e7eb;
-		border-radius: 4px;
-		font-size: 0.65rem;
-		font-weight: 600;
-		color: #6b7280;
+		transition: all 0.15s;
 	}
-	.inspire-title {
-		font-size: 0.85rem;
-		color: #374151;
+	.ws-new-btn:hover:not(:disabled) {
+		background: #374151;
+		color: white;
+		border-color: #374151;
+	}
+	.ws-new-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 
 	@media (max-width: 800px) {
 		.dashboard-grid {
 			grid-template-columns: 1fr;
 		}
-		.stats-card, .inspire-card, .history-card {
+		.stats-card, .history-card, .workspaces-card {
 			grid-column: span 1;
 		}
-		.focus-card {
+		.momentum-card {
 			grid-column: span 1;
 		}
 		.stats-grid {
 			flex-wrap: wrap;
-		}
-		.inspire-content, .focus-content {
-			flex-direction: column;
-			gap: 16px;
 		}
 	}
 </style>

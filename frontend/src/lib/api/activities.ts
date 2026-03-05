@@ -12,7 +12,18 @@ export async function getActivity(id: number): Promise<Activity> {
 	return res.json();
 }
 
-export async function createActivity(data: { title: string; description?: string; duration?: number; log_id?: number }): Promise<Activity> {
+export async function createActivity(data: {
+	title: string;
+	description?: string;
+	duration?: number;
+	log_id?: number;
+	plan_id?: number | null;
+	source_id?: number | null;
+	position?: number;
+	header?: string | null;
+	status?: string;
+	activity_date?: string | null;
+}): Promise<Activity> {
 	const res = await fetch(`${BASE}/`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

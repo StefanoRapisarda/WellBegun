@@ -52,11 +52,32 @@ def delete(db: Session, note_id: int) -> bool:
     return True
 
 
+def activate(db: Session, note_id: int) -> Note | None:
+    note = get_by_id(db, note_id)
+    if not note:
+        return None
+    note.is_active = True
+    db.commit()
+    db.refresh(note)
+    return note
+
+
+def deactivate(db: Session, note_id: int) -> Note | None:
+    note = get_by_id(db, note_id)
+    if not note:
+        return None
+    note.is_active = False
+    db.commit()
+    db.refresh(note)
+    return note
+
+
 def archive(db: Session, note_id: int) -> Note | None:
     note = get_by_id(db, note_id)
     if not note:
         return None
     note.is_archived = True
+    note.is_active = False
     db.commit()
     db.refresh(note)
     return note

@@ -7,10 +7,10 @@
 	import { activities, loadActivities } from '$lib/stores/activities';
 	import { sources, loadSources } from '$lib/stores/sources';
 	import { actors, loadActors } from '$lib/stores/actors';
-	import { readingLists, loadReadingLists } from '$lib/stores/readingLists';
+	import { collections, loadCollections } from '$lib/stores/collections';
 	import { loadTags, triggerEntityTagsRefresh } from '$lib/stores/tags';
-	import { notepadText } from '$lib/stores/notepad';
-	import { activeTab } from '$lib/stores/activeTab';
+	import { pendingCollectionMembers } from '$lib/stores/pendingCollection';
+	import { panels, togglePanel } from '$lib/stores/panels';
 
 	import { deleteProject, activateProject, deactivateProject, archiveProject } from '$lib/api/projects';
 	import { deleteLog, activateLog, deactivateLog, archiveLog } from '$lib/api/logs';
@@ -18,20 +18,18 @@
 	import { deleteActivity, activateActivity, deactivateActivity, archiveActivity } from '$lib/api/activities';
 	import { deleteSource, activateSource, deactivateSource, archiveSource } from '$lib/api/sources';
 	import { deleteActor, activateActor, deactivateActor, archiveActor } from '$lib/api/actors';
-	import { deleteReadingList, activateReadingList, deactivateReadingList } from '$lib/api/readingLists';
+	import { deleteCollection, activateCollection, deactivateCollection } from '$lib/api/collections';
 	import { getEntityTags, attachTag, detachTag } from '$lib/api/tags';
-	import { serializeEntity } from '$lib/notepad/parser';
-	import { ENTITY_CONFIG, type NotepadEntityType } from '$lib/notepad/types';
-	import { entityToNotepadFields } from '$lib/notepad/utils';
 
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import TagInput from './TagInput.svelte';
 	import type { Tag } from '$lib/types';
 
-	const SUPPORTS_ACTIVE: EntityType[] = ['project', 'log', 'activity', 'source', 'actor', 'reading_list'];
+	const SUPPORTS_ACTIVE: EntityType[] = ['project', 'log', 'activity', 'source', 'actor', 'collection'];
 	const SUPPORTS_ARCHIVE: EntityType[] = ['project', 'log', 'note', 'activity', 'source', 'actor'];
 
 	let showConfirmDelete = $state(false);
+	let showCollectionDeleteChoice = $state(false);
 	let showTagInput = $state(false);
 	let bulkTags = $state<Tag[]>([]);
 	let busy = $state(false);
@@ -39,8 +37,8 @@
 	let count = $derived($selectedCount);
 	let entities = $derived($selectedEntities);
 
-	let hasActivatable = $derived(entities.some(e => SUPPORTS_ACTIVE.includes(e.entityType)));
-	let hasArchivable = $derived(entities.some(e => SUPPORTS_ARCHIVE.includes(e.entityType)));
+	let allActivatable = $derived(entities.every(e => SUPPORTS_ACTIVE.includes(e.entityType)));
+	let allArchivable = $derived(entities.every(e => SUPPORTS_ARCHIVE.includes(e.entityType)));
 
 	async function reloadAllStores() {
 		await Promise.all([
@@ -50,7 +48,7 @@
 			loadActivities(),
 			loadSources(),
 			loadActors(),
-			loadReadingLists(),
+			loadCollections(),
 			loadTags()
 		]);
 		triggerEntityTagsRefresh();
@@ -63,7 +61,8 @@
 		activity: activateActivity,
 		source: activateSource,
 		actor: activateActor,
-		reading_list: activateReadingList,
+		plan: null,
+		collection: activateCollection,
 	};
 
 	const deactivators: Record<EntityType, ((id: number) => Promise<any>) | null> = {
@@ -73,7 +72,8 @@
 		activity: deactivateActivity,
 		source: deactivateSource,
 		actor: deactivateActor,
-		reading_list: deactivateReadingList,
+		plan: null,
+		collection: deactivateCollection,
 	};
 
 	const archivers: Record<EntityType, ((id: number) => Promise<any>) | null> = {
@@ -83,7 +83,8 @@
 		activity: archiveActivity,
 		source: archiveSource,
 		actor: archiveActor,
-		reading_list: null,
+		plan: null,
+		collection: null,
 	};
 
 	const deleters: Record<EntityType, (id: number) => Promise<void>> = {
@@ -93,7 +94,8 @@
 		activity: deleteActivity,
 		source: deleteSource,
 		actor: deleteActor,
-		reading_list: deleteReadingList,
+		plan: async (id) => { const { deletePlan } = await import('$lib/api/plans'); await deletePlan(id); },
+		collection: deleteCollection,
 	};
 
 	async function bulkActivate() {
@@ -129,14 +131,41 @@
 		busy = false;
 	}
 
-	async function bulkDelete() {
+	let hasCollections = $derived(entities.some(e => e.entityType === 'collection'));
+
+	function requestBulkDelete() {
+		if (hasCollections) {
+			showCollectionDeleteChoice = true;
+		} else {
+			showConfirmDelete = true;
+		}
+	}
+
+	async function bulkDeleteCollectionMembers() {
+		const collectionEntities = entities.filter(e => e.entityType === 'collection');
+		for (const ce of collectionEntities) {
+			const col = get(collections).find((c: any) => c.id === ce.entityId);
+			if (!col) continue;
+			for (const item of col.items) {
+				if (item.member_entity_type === 'source') await deleteSource(item.member_entity_id);
+				else if (item.member_entity_type === 'activity') await deleteActivity(item.member_entity_id);
+				else if (item.member_entity_type === 'note') await deleteNote(item.member_entity_id);
+			}
+		}
+	}
+
+	async function bulkDelete(deleteCollectionMembers = false) {
 		busy = true;
+		if (deleteCollectionMembers) {
+			await bulkDeleteCollectionMembers();
+		}
 		for (const e of entities) {
 			await deleters[e.entityType](e.entityId);
 		}
 		await reloadAllStores();
 		panelSelection.clear();
 		showConfirmDelete = false;
+		showCollectionDeleteChoice = false;
 		busy = false;
 	}
 
@@ -172,6 +201,49 @@
 		busy = false;
 	}
 
+	// Resolve entity titles from stores
+	const TITLE_FIELDS: Record<EntityType, string> = {
+		project: 'title',
+		log: 'title',
+		note: 'title',
+		activity: 'title',
+		source: 'title',
+		actor: 'full_name',
+		plan: 'title',
+		collection: 'title',
+	};
+
+	let allSameType = $derived(
+		entities.length >= 2 && entities.every(e => e.entityType === entities[0].entityType)
+	);
+
+	function getEntityTitle(type: EntityType, id: number): string {
+		const store = storeMap[type];
+		if (!store) return `${type} #${id}`;
+		const items = get(store) as any[];
+		const entity = items.find((item: any) => item.id === id);
+		if (!entity) return `${type} #${id}`;
+		const field = TITLE_FIELDS[type];
+		return entity[field] ?? `${type} #${id}`;
+	}
+
+	function makeCollection() {
+		if (!allSameType) return;
+		const members = entities.map(e => ({
+			entityType: e.entityType,
+			entityId: e.entityId,
+			title: getEntityTitle(e.entityType, e.entityId)
+		}));
+		pendingCollectionMembers.set(members);
+		// Open collection panel if not visible
+		const currentPanels = get(panels);
+		const collectionPanel = currentPanels.find(p => p.id === 'collection');
+		if (collectionPanel && !collectionPanel.visible) {
+			togglePanel('collection');
+		}
+		panelSelection.clear();
+	}
+
 	const storeMap: Record<EntityType, any> = {
 		project: projects,
 		log: logs,
@@ -179,40 +251,10 @@
 		activity: activities,
 		source: sources,
 		actor: actors,
-		reading_list: readingLists,
+		plan: null,
+		collection: collections,
 	};
 
-	async function sendToNotepad() {
-		busy = true;
-		const blocks: string[] = [];
-
-		for (const e of entities) {
-			const store = storeMap[e.entityType];
-			const items = get(store) as any[];
-			const entity = items.find((item: any) => item.id === e.entityId);
-			if (!entity) continue;
-
-			const fields = entityToNotepadFields(e.entityType, entity);
-
-			// Fetch tags and include them
-			const tags = await getEntityTags(e.entityType, e.entityId);
-			if (tags.length > 0) {
-				fields.tags = tags.map(t => t.name).join(', ');
-			}
-
-			blocks.push(serializeEntity(e.entityType as NotepadEntityType, fields, undefined, entity.id));
-		}
-
-		if (blocks.length === 0) { busy = false; return; }
-
-		const newText = blocks.join('\n\n');
-		const current = get(notepadText);
-		notepadText.set(current.trim() ? current.trimEnd() + '\n\n' + newText : newText);
-
-		activeTab.set('notepad');
-		panelSelection.clear();
-		busy = false;
-	}
 </script>
 
 {#if count >= 2}
@@ -222,15 +264,16 @@
 		<span class="count">{count} selected</span>
 		<div class="divider"></div>
 		<button class="bulk-btn tags" onclick={handleTagsClick} disabled={busy}>Tags</button>
-		<button class="bulk-btn notepad" onclick={sendToNotepad} disabled={busy}>Notepad</button>
-		{#if hasActivatable}
-			<button class="bulk-btn active" onclick={bulkActivate} disabled={busy}>Active</button>
+		{#if allSameType}
+			<button class="bulk-btn collect" onclick={makeCollection} disabled={busy}>Collect</button>
+		{/if}
+		{#if allActivatable}
 			<button class="bulk-btn inactive" onclick={bulkDeactivate} disabled={busy}>Inactive</button>
 		{/if}
-		{#if hasArchivable}
+		{#if allArchivable}
 			<button class="bulk-btn archive" onclick={bulkArchive} disabled={busy}>Archive</button>
 		{/if}
-		<button class="bulk-btn delete" onclick={() => (showConfirmDelete = true)} disabled={busy}>Delete</button>
+		<button class="bulk-btn delete" onclick={requestBulkDelete} disabled={busy}>Delete</button>
 		<div class="divider"></div>
 		<button class="bulk-btn clear" onclick={() => panelSelection.clear()} disabled={busy}>Clear</button>
 
@@ -252,9 +295,26 @@
 <ConfirmDialog
 	open={showConfirmDelete}
 	message={`Delete ${count} selected entities? This cannot be undone.`}
-	onConfirm={bulkDelete}
+	onConfirm={() => bulkDelete(false)}
 	onCancel={() => (showConfirmDelete = false)}
 />
+
+{#if showCollectionDeleteChoice}
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<div class="coll-dialog-overlay" onclick={() => showCollectionDeleteChoice = false} onkeydown={(e) => e.key === 'Escape' && (showCollectionDeleteChoice = false)} role="dialog" tabindex="-1">
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="coll-dialog-content" onclick={(e) => e.stopPropagation()} role="document">
+			<p class="coll-dialog-title">Delete {count} selected entities?</p>
+			<p class="coll-dialog-message">Some selected items are collections. Do you also want to delete the member entities inside those collections?</p>
+			<div class="coll-dialog-actions">
+				<button class="coll-btn coll-btn-cancel" onclick={() => showCollectionDeleteChoice = false}>Cancel</button>
+				<button class="coll-btn coll-btn-keep" onclick={() => bulkDelete(false)}>Keep members</button>
+				<button class="coll-btn coll-btn-delete-all" onclick={() => bulkDelete(true)}>Delete all</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.bulk-panel {
@@ -297,8 +357,7 @@
 	.bulk-btn:hover:not(:disabled) { background: #f3f4f6; }
 	.bulk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.bulk-btn.tags { background: #f9fafb; color: #6b7280; }
-	.bulk-btn.notepad { background: #ede9fe; color: #6d28d9; border-color: #ddd6fe; }
-	.bulk-btn.active { background: #dcfce7; color: #16a34a; border-color: #bbf7d0; }
+	.bulk-btn.collect { background: #f5f3fa; color: #7c6f9e; border-color: #d4cfe6; }
 	.bulk-btn.inactive { background: #f3f4f6; color: #6b7280; }
 	.bulk-btn.archive { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 	.bulk-btn.delete { background: #fee2e2; color: #ef4444; border-color: #fecaca; }
@@ -307,4 +366,51 @@
 		width: 100%;
 		margin-top: 4px;
 	}
+	/* ── Collection delete dialog ── */
+	.coll-dialog-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1100;
+	}
+	.coll-dialog-content {
+		background: white;
+		border-radius: 8px;
+		padding: 24px;
+		min-width: 340px;
+		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+	}
+	.coll-dialog-title {
+		font-size: 0.95rem;
+		font-weight: 600;
+		margin: 0 0 8px;
+		color: #111827;
+	}
+	.coll-dialog-message {
+		font-size: 0.85rem;
+		color: #6b7280;
+		margin: 0 0 20px;
+	}
+	.coll-dialog-actions {
+		display: flex;
+		gap: 8px;
+		justify-content: flex-end;
+	}
+	.coll-btn {
+		padding: 8px 14px;
+		border-radius: 6px;
+		border: 1px solid #d1d5db;
+		cursor: pointer;
+		font-size: 0.82rem;
+		font-weight: 500;
+	}
+	.coll-btn-cancel { background: white; color: #374151; }
+	.coll-btn-cancel:hover { background: #f3f4f6; }
+	.coll-btn-keep { background: #f0fdf4; color: #16a34a; border-color: #bbf7d0; }
+	.coll-btn-keep:hover { background: #dcfce7; }
+	.coll-btn-delete-all { background: #ef4444; color: white; border-color: #ef4444; }
+	.coll-btn-delete-all:hover { background: #dc2626; }
 </style>

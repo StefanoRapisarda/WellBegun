@@ -12,7 +12,6 @@
 		{ value: 'activity', label: 'Activity' },
 		{ value: 'source', label: 'Source' },
 		{ value: 'actor', label: 'Actor' },
-		{ value: 'reading_list', label: 'R.List' },
 		{ value: 'plan', label: 'Plan' },
 	];
 
@@ -23,7 +22,6 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
 		plan: '#6b8ba3',
 	};
 
@@ -36,20 +34,30 @@
 
 	let {
 		open,
+		onClose,
 		onResultClick,
 		onStateChange,
 		resultActionLabel = 'Select',
 		showArchivedToggle = false,
 		showActiveRelatedToggle = false,
+		selectionMode = false,
 		boardEntityKeys,
+		injectedResults,
+		injectedLabel,
+		onClearInjected,
 	}: {
 		open: boolean;
+		onClose?: () => void;
 		onResultClick: (result: SearchResult) => void;
 		onStateChange?: (state: QueryPanelState) => void;
 		resultActionLabel?: string;
 		showArchivedToggle?: boolean;
 		showActiveRelatedToggle?: boolean;
+		selectionMode?: boolean;
 		boardEntityKeys?: Set<string>;
+		injectedResults?: SearchResult[];
+		injectedLabel?: string;
+		onClearInjected?: () => void;
 	} = $props();
 
 	// Internal state
@@ -98,6 +106,16 @@
 		relatedToTags = [];
 		debouncedSearch();
 	}
+
+	// When injected results are provided, show those (excluding on-board entities); otherwise show search results
+	let displayResults = $derived.by(() => {
+		if (injectedResults && injectedResults.length > 0) {
+			return injectedResults.filter(r => !isOnBoard(r));
+		}
+		return results;
+	});
+
+	let showingInjected = $derived(!!(injectedResults && injectedResults.length > 0));
 
 	let activeFilters = $derived(!!(queryText || startDate || endDate || selectedTypes.size > 0 || selectedTagIds.size > 0 || relatedToTags.length > 0));
 
@@ -158,7 +176,12 @@
 
 	function debouncedSearch() {
 		if (debounceTimer) clearTimeout(debounceTimer);
+		onClearInjected?.();
 		debounceTimer = setTimeout(() => doSearch(), 300);
+	}
+
+	export function refresh() {
+		doSearch();
 	}
 
 	async function doSearch() {
@@ -185,6 +208,52 @@
 		return boardEntityKeys?.has(resultKey(r)) ?? false;
 	}
 
+	// --- Selection mode ---
+	let selectedKeys = $state<Set<string>>(new Set());
+
+	function handleResultClick(result: SearchResult, e: MouseEvent) {
+		if (!selectionMode) {
+			onResultClick(result);
+			return;
+		}
+		const key = resultKey(result);
+		if (e.metaKey || e.ctrlKey) {
+			// Toggle in multi-select
+			const next = new Set(selectedKeys);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			selectedKeys = next;
+		} else {
+			// Single select (toggle if already selected)
+			selectedKeys = selectedKeys.has(key) && selectedKeys.size === 1
+				? new Set()
+				: new Set([key]);
+		}
+	}
+
+	function handleResultDblClick(result: SearchResult) {
+		if (!selectionMode) return; // already handled by onclick
+		onResultClick(result);
+		selectedKeys = new Set();
+	}
+
+	export function clearSelection() {
+		selectedKeys = new Set();
+	}
+
+	function buildDragData(result: SearchResult): string {
+		if (!selectionMode || selectedKeys.size === 0) {
+			return JSON.stringify([{ type: result.type, id: result.id, title: result.title }]);
+		}
+		// Include the dragged item + all selected items
+		const keys = new Set(selectedKeys);
+		keys.add(resultKey(result));
+		const items = displayResults
+			.filter(r => keys.has(resultKey(r)))
+			.map(r => ({ type: r.type, id: r.id, title: r.title }));
+		return JSON.stringify(items);
+	}
+
 	onMount(() => {
 		doSearch();
 	});
@@ -192,6 +261,13 @@
 
 {#if open}
 	<div class="query-panel">
+		{#if onClose}
+			<button class="btn-slide-close" onclick={onClose} title="Close panel">
+				<svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="2 2 8 8 2 14"></polyline>
+				</svg>
+			</button>
+		{/if}
 		<div class="qp-header">
 			<span class="qp-title">Search</span>
 		</div>
@@ -366,18 +442,33 @@
 
 			<!-- Results -->
 			<div class="qp-results">
-				{#if loading}
+				{#if showingInjected && injectedLabel}
+					<div class="qp-injected-header">
+						<span class="qp-injected-label">{injectedLabel}</span>
+						<button class="qp-injected-clear" onclick={() => onClearInjected?.()}>Back to search</button>
+					</div>
+				{/if}
+				{#if loading && !showingInjected}
 					<div class="qp-status">Searching...</div>
-				{:else if results.length === 0}
-					<div class="qp-status">No results</div>
+				{:else if displayResults.length === 0}
+					<div class="qp-status">{showingInjected ? 'All connections are on the board' : 'No results'}</div>
 				{:else}
-					{#each results as result (resultKey(result))}
+					{#each displayResults as result (resultKey(result))}
 						<button
 							class="qp-result"
 							class:on-board={isOnBoard(result)}
-							onclick={() => onResultClick(result)}
+							class:selected={selectionMode && selectedKeys.has(resultKey(result))}
+							onclick={(e) => handleResultClick(result, e)}
+							ondblclick={() => handleResultDblClick(result)}
+							draggable="true"
+							ondragstart={(e) => {
+								e.dataTransfer?.setData("application/wb-entity", buildDragData(result));
+								e.dataTransfer!.effectAllowed = "copy";
+							}}
+							ondragend={() => { if (selectionMode) selectedKeys = new Set(); }}
 						>
 							<div class="qp-result-header">
+								<span class="qp-drag-handle" title="Drag to workspace">&#x2630;</span>
 								<span class="qp-type-badge" style:background={TYPE_COLORS[result.type] ?? '#888'}>{result.type}</span>
 								<span class="qp-result-title">{result.title}</span>
 								{#if isOnBoard(result)}
@@ -416,6 +507,34 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+	.btn-slide-close {
+		position: absolute;
+		left: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 10;
+		width: 16px;
+		height: 48px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid #e5e7eb;
+		border-left: none;
+		border-radius: 0 6px 6px 0;
+		background: #f9fafb;
+		cursor: pointer;
+		color: #9ca3af;
+		opacity: 0;
+		transition: opacity 0.2s, background 0.15s, color 0.15s;
+		padding: 0;
+	}
+	.query-panel:hover .btn-slide-close {
+		opacity: 1;
+	}
+	.btn-slide-close:hover {
+		background: #e5e7eb;
+		color: #374151;
 	}
 	.qp-header {
 		display: flex;
@@ -724,6 +843,33 @@
 		cursor: pointer;
 	}
 
+	/* Injected results header */
+	.qp-injected-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 14px;
+		background: #eff6ff;
+		border-bottom: 1px solid #dbeafe;
+	}
+	.qp-injected-label {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #3b82f6;
+	}
+	.qp-injected-clear {
+		font-size: 0.65rem;
+		padding: 2px 8px;
+		border: 1px solid #bfdbfe;
+		border-radius: 4px;
+		background: white;
+		color: #3b82f6;
+		cursor: pointer;
+	}
+	.qp-injected-clear:hover {
+		background: #dbeafe;
+	}
+
 	/* Results */
 	.qp-results {
 		flex: 1;
@@ -753,6 +899,21 @@
 	}
 	.qp-result.on-board {
 		background: #f0fdf4;
+	}
+	.qp-result.selected {
+		background: #dbeafe;
+		border-left: 3px solid #3b82f6;
+		padding-left: 11px;
+	}
+	.qp-drag-handle {
+		font-size: 0.7rem;
+		color: #d1d5db;
+		cursor: grab;
+		flex-shrink: 0;
+		line-height: 1;
+	}
+	.qp-result:hover .qp-drag-handle {
+		color: #9ca3af;
 	}
 	.qp-result-header {
 		display: flex;

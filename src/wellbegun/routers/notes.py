@@ -42,6 +42,22 @@ def delete_note(note_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.post("/{note_id}/activate", response_model=NoteOut)
+def activate_note(note_id: int, db: Session = Depends(get_db)):
+    note = note_service.activate(db, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
+@router.post("/{note_id}/deactivate", response_model=NoteOut)
+def deactivate_note(note_id: int, db: Session = Depends(get_db)):
+    note = note_service.deactivate(db, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
 @router.post("/{note_id}/archive", response_model=NoteOut)
 def archive_note(note_id: int, db: Session = Depends(get_db)):
     note = note_service.archive(db, note_id)

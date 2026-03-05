@@ -29,9 +29,36 @@ def get_activity(activity_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=ActivityOut, status_code=201)
 def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
-    return activity_service.create(
-        db, title=data.title, description=data.description, duration=data.duration, log_id=data.log_id, status=data.status
+    activity = activity_service.create(
+        db,
+        title=data.title,
+        description=data.description,
+        duration=data.duration,
+        log_id=data.log_id,
+        plan_id=data.plan_id,
+        source_id=data.source_id,
+        position=data.position,
+        header=data.header,
+        status=data.status,
     )
+    if data.plan_id and not data.header:
+        # Only auto-add to the default "has activities" collection when no header.
+        # Activities with a header will be placed into a named collection by the frontend.
+        from wellbegun.services.plan_service import ensure_plan_collection
+        from wellbegun.services import collection_service
+
+        coll = ensure_plan_collection(db, data.plan_id, "activities", "activity")
+        try:
+            collection_service.add_item(
+                db, coll.id,
+                member_entity_type="activity",
+                member_entity_id=activity.id,
+                position=data.position or 0,
+                status=data.status or "todo",
+            )
+        except ValueError:
+            pass  # duplicate item — already in collection
+    return activity
 
 
 @router.put("/{activity_id}", response_model=ActivityOut)

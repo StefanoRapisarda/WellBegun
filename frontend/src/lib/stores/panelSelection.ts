@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-export type EntityType = 'project' | 'log' | 'note' | 'activity' | 'source' | 'actor' | 'reading_list';
+export type EntityType = 'project' | 'log' | 'note' | 'activity' | 'source' | 'actor' | 'plan' | 'collection';
 
 export interface SelectedEntity {
 	entityType: EntityType;
@@ -39,6 +39,9 @@ function createPanelSelection() {
 				return next;
 			});
 		},
+		setMany(items: { type: EntityType; id: number }[]) {
+			set(new Set(items.map(i => makeKey(i.type, i.id))));
+		},
 		clear() {
 			set(new Set());
 		}
@@ -52,3 +55,12 @@ export const selectedCount = derived(panelSelection, ($sel) => $sel.size);
 export const selectedEntities = derived(panelSelection, ($sel) =>
 	Array.from($sel).map(parseKey)
 );
+
+// ── Pulsing selection (time-limited visual highlight) ──
+
+export const pulsingSelection = writable<Set<string>>(new Set());
+
+export function setPulsingSelection(keys: string[], duration = 2500) {
+	pulsingSelection.set(new Set(keys));
+	setTimeout(() => pulsingSelection.set(new Set()), duration);
+}

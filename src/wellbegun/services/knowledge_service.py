@@ -156,26 +156,6 @@ def delete_triple(db: Session, triple_id: int) -> bool:
     return True
 
 
-def delete_triples_for_entity(db: Session, entity_type: str, entity_id: int) -> int:
-    """Delete all triples where entity is subject OR object. Returns count deleted."""
-    triples = (
-        db.query(KnowledgeTriple)
-        .filter(
-            or_(
-                (KnowledgeTriple.subject_type == entity_type)
-                & (KnowledgeTriple.subject_id == entity_id),
-                (KnowledgeTriple.object_type == entity_type)
-                & (KnowledgeTriple.object_id == entity_id),
-            )
-        )
-        .all()
-    )
-    count = len(triples)
-    for t in triples:
-        db.delete(t)
-    return count
-
-
 def populate_from_focus(
     db: Session,
     project_ids: list[int],
@@ -216,7 +196,7 @@ def populate_from_focus(
 
     # 3. Collect all entities that should be on the board, validating they exist
     from wellbegun.models import (
-        Project, Activity, Note, Log, Source, Actor, ReadingList,
+        Project, Activity, Note, Log, Source, Actor, Collection, Plan,
     )
 
     MODEL_MAP: dict[str, type] = {
@@ -226,7 +206,8 @@ def populate_from_focus(
         "log": Log,
         "source": Source,
         "actor": Actor,
-        "reading_list": ReadingList,
+        "collection": Collection,
+        "plan": Plan,
     }
 
     def entity_exists(etype: str, eid: int) -> bool:
@@ -267,7 +248,7 @@ def populate_from_focus(
     # 5. Layout new entities in columns by type, offset from existing content
     TYPE_ORDER = [
         "project", "activity", "log", "note",
-        "source", "actor", "reading_list",
+        "source", "actor", "plan", "collection",
     ]
     type_groups: dict[str, list[int]] = {}
     for etype, eid in new_entities:
@@ -323,6 +304,27 @@ def populate_from_focus(
             )
             triples_created += 1
 
+    # 7. Create triples from FK-based structural relationships (scoped to entities on board)
+    from wellbegun.models.collection import CollectionItem
+
+    def _exists(etype: str, eid: int) -> bool:
+        return (etype, eid) in entities
+
+    # Activity.source_id FK: activity → source ("consults")
+    for act in db.query(Activity).filter(Activity.source_id.isnot(None)).all():
+        if _exists("activity", act.id) and _exists("source", act.source_id):
+            create_triple(db, "activity", act.id, "consults", "source", act.source_id)
+            triples_created += 1
+
+    for ci in db.query(CollectionItem).all():
+        if _exists("collection", ci.collection_id) and _exists(ci.member_entity_type, ci.member_entity_id):
+            create_triple(
+                db, "collection", ci.collection_id,
+                get_default_predicate("collection", ci.member_entity_type),
+                ci.member_entity_type, ci.member_entity_id,
+            )
+            triples_created += 1
+
     return {
         "entities_total": len(entities),
         "nodes_created": len(nodes_to_create),
@@ -339,7 +341,7 @@ def populate_all(db: Session) -> dict:
     """
     from wellbegun.models.tag import Tag, EntityTag
     from wellbegun.models import (
-        Project, Activity, Note, Log, Source, Actor, ReadingList,
+        Project, Activity, Note, Log, Source, Actor, Collection, Plan,
     )
 
     MODEL_MAP: dict[str, type] = {
@@ -349,7 +351,8 @@ def populate_all(db: Session) -> dict:
         "log": Log,
         "source": Source,
         "actor": Actor,
-        "reading_list": ReadingList,
+        "collection": Collection,
+        "plan": Plan,
     }
 
     # 1. Collect ALL entities from all model tables
@@ -380,7 +383,7 @@ def populate_all(db: Session) -> dict:
     # 3. Layout new entities in columns by type
     TYPE_ORDER = [
         "project", "activity", "log", "note",
-        "source", "actor", "reading_list",
+        "source", "actor", "plan", "collection",
     ]
     type_groups: dict[str, list[int]] = {}
     for etype, eid in new_entities:
@@ -435,6 +438,25 @@ def populate_all(db: Session) -> dict:
                 tag.entity_type, tag.entity_id,
                 predicate,
                 et.target_type, et.target_id,
+            )
+            triples_created += 1
+
+    # 5. Create triples from FK-based structural relationships
+    from wellbegun.models.collection import CollectionItem
+
+    # Activity.source_id FK: activity → source ("consults")
+    for act in db.query(Activity).filter(Activity.source_id.isnot(None)).all():
+        if entity_exists("activity", act.id) and entity_exists("source", act.source_id):
+            create_triple(db, "activity", act.id, "consults", "source", act.source_id)
+            triples_created += 1
+
+    # CollectionItem: collection → member entity ("contains")
+    for ci in db.query(CollectionItem).all():
+        if entity_exists("collection", ci.collection_id) and entity_exists(ci.member_entity_type, ci.member_entity_id):
+            create_triple(
+                db, "collection", ci.collection_id,
+                get_default_predicate("collection", ci.member_entity_type),
+                ci.member_entity_type, ci.member_entity_id,
             )
             triples_created += 1
 

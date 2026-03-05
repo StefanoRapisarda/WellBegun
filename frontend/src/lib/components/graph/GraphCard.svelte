@@ -1,4 +1,6 @@
 <script lang="ts">
+	import EntityIcon from '$lib/components/shared/EntityIcon.svelte';
+
 	let {
 		entityType,
 		entityId,
@@ -10,6 +12,12 @@
 		highlighted = false,
 		selected = false,
 		archived = false,
+		pulsing = false,
+		status = '',
+		mood = '',
+		weather = '',
+		dayTheme = '',
+		zIndex = 0,
 		onPointerDown,
 		onDblClick,
 		onToggleCollapse
@@ -24,10 +32,28 @@
 		highlighted?: boolean;
 		selected?: boolean;
 		archived?: boolean;
+		pulsing?: boolean;
+		status?: string;
+		mood?: string;
+		weather?: string;
+		dayTheme?: string;
+		zIndex?: number;
 		onPointerDown: (e: PointerEvent) => void;
 		onDblClick: () => void;
 		onToggleCollapse: () => void;
 	} = $props();
+
+	let hasEmojis = $derived(!!(mood || weather || dayTheme));
+
+	let showStatus = $derived(!!status);
+
+	let statusClass = $derived(
+		status === 'done' || status === 'reviewed' ? 'status-done' :
+		status === 'in_progress' || status === 'reading' ? 'status-in-progress' :
+		status === 'on_hold' ? 'status-on-hold' :
+		status === 'cancelled' ? 'status-cancelled' :
+		'status-default'
+	);
 
 	let displayTitle = $derived(
 		title.length > 22 ? title.slice(0, 20) + '…' : title
@@ -44,18 +70,28 @@
 	class:highlighted
 	class:selected
 	class:archived
+	class:pulsing
 	style:left="{x}px"
 	style:top="{y}px"
+	style:z-index={zIndex || 'auto'}
 	style:--card-color={color}
 	onpointerdown={onPointerDown}
 	ondblclick={onDblClick}
 >
 	<div class="card-header">
-		<span class="type-dot" style:background={color}></span>
+		<EntityIcon type={entityType} size={12} />
 		<span class="type-label">{typeLabel}</span>
 		{#if archived}<span class="archived-badge">archived</span>{/if}
+		{#if showStatus}<span class="status-badge {statusClass}">{status.replace('_', ' ')}</span>{/if}
 	</div>
 	<div class="card-title">{displayTitle}</div>
+	{#if hasEmojis}
+		<div class="card-emojis">
+			{#if mood}<span title="Mood">{mood}</span>{/if}
+			{#if weather}<span title="Weather">{weather}</span>{/if}
+			{#if dayTheme}<span title="Theme">{dayTheme}</span>{/if}
+		</div>
+	{/if}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<button
 		class="collapse-toggle"
@@ -106,6 +142,21 @@
 		font-weight: 600;
 		margin-left: auto;
 	}
+	.status-badge {
+		font-size: 0.5rem;
+		padding: 1px 4px;
+		background: #f3f4f6;
+		color: #6b7280;
+		border-radius: 3px;
+		font-weight: 600;
+		margin-left: auto;
+		flex-shrink: 0;
+	}
+	.status-done { background: #dcfce7; color: #16a34a; }
+	.status-in-progress { background: #fef3c7; color: #d97706; }
+	.status-on-hold { background: #fef9c3; color: #a16207; }
+	.status-default { background: #f3f4f6; color: #9ca3af; }
+	.status-cancelled { background: #fee2e2; color: #dc2626; }
 	.graph-card.highlighted {
 		box-shadow:
 			0 0 0 2px var(--card-color),
@@ -115,16 +166,17 @@
 		box-shadow: 0 0 0 2px #3b82f6, 0 0 12px rgba(59, 130, 246, 0.3);
 		background: #eff6ff;
 	}
+	.graph-card.pulsing {
+		animation: graph-pulse 0.6s ease-in-out 4;
+	}
+	@keyframes graph-pulse {
+		0%, 100% { box-shadow: 0 0 0 2px #3b82f6, 0 0 0 rgba(59,130,246,0); }
+		50% { box-shadow: 0 0 0 3px #3b82f6, 0 0 16px 4px rgba(59,130,246,0.4); }
+	}
 	.card-header {
 		display: flex;
 		align-items: center;
 		gap: 5px;
-	}
-	.type-dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		flex-shrink: 0;
 	}
 	.type-label {
 		font-size: 0.6rem;
@@ -138,6 +190,12 @@
 		color: #1f2937;
 		font-weight: 500;
 		line-height: 1.3;
+	}
+	.card-emojis {
+		display: flex;
+		gap: 3px;
+		font-size: 0.85rem;
+		line-height: 1;
 	}
 	.collapse-toggle {
 		position: absolute;

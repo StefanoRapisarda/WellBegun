@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Plan } from '$lib/types';
-	import { createPlan, updatePlan, addPlanItem } from '$lib/api/plans';
+	import { createPlan, updatePlan, addPlanRoleNote } from '$lib/api/plans';
 	import { createActivity } from '$lib/api/activities';
 	import { loadPlans } from '$lib/stores/plans';
 	import { loadActivities } from '$lib/stores/activities';
 	import { loadTags } from '$lib/stores/tags';
-	import { attachTag, searchTags, createWildTag } from '$lib/api/tags';
+	import { loadNotes } from '$lib/stores/notes';
+	import { attachTag } from '$lib/api/tags';
 	import DefaultTagSuggestions from '../shared/DefaultTagSuggestions.svelte';
 	import { onMount } from 'svelte';
 
@@ -13,11 +14,30 @@
 
 	let title = $state(editData?.title ?? '');
 	let description = $state(editData?.description ?? '');
-	let motivation = $state(editData?.motivation ?? '');
-	let outcome = $state(editData?.outcome ?? '');
 	let startDate = $state(editData?.start_date ?? '');
 	let endDate = $state(editData?.end_date ?? '');
 	let selectedTagIds = $state<number[]>([]);
+
+	// Role note multi-item sections
+	const ROLE_KEYS = ['motivation', 'goal', 'outcome'] as const;
+	const ROLE_LABELS: Record<string, string> = {
+		motivation: 'Motivation',
+		goal: 'Goal',
+		outcome: 'Outcome'
+	};
+	let roleItems = $state<Record<string, string[]>>({ motivation: [], goal: [], outcome: [] });
+	let roleNewTexts = $state<Record<string, string>>({ motivation: '', goal: '', outcome: '' });
+
+	function addRoleItem(role: string) {
+		const text = roleNewTexts[role]?.trim();
+		if (!text) return;
+		roleItems = { ...roleItems, [role]: [...roleItems[role], text] };
+		roleNewTexts = { ...roleNewTexts, [role]: '' };
+	}
+
+	function removeRoleItem(role: string, index: number) {
+		roleItems = { ...roleItems, [role]: roleItems[role].filter((_, i) => i !== index) };
+	}
 
 	// Plan items with section headers
 	interface PlannedItem { title: string; header: string | null; }
@@ -138,11 +158,16 @@
 		e.stopPropagation();
 		if (!title.trim()) return;
 		try {
+			// Use first motivation/outcome item for backward compat on Plan model fields
+			const firstMotivation = roleItems.motivation[0] || undefined;
+			const firstOutcome = roleItems.outcome[0] || undefined;
+			const firstGoal = roleItems.goal[0] || undefined;
 			const data = {
 				title: title.trim(),
 				description: description.trim() || undefined,
-				motivation: motivation.trim() || undefined,
-				outcome: outcome.trim() || undefined,
+				motivation: firstMotivation,
+				outcome: firstOutcome,
+				goal: firstGoal,
 				start_date: startDate || undefined,
 				end_date: endDate || undefined
 			};
@@ -155,26 +180,27 @@
 				for (const tagId of selectedTagIds) {
 					await attachTag(tagId, 'plan', created.id);
 				}
-				// Create activities from planned items
+				// Create role notes
+				for (const role of ROLE_KEYS) {
+					for (const content of roleItems[role]) {
+						await addPlanRoleNote(created.id, { role, content });
+					}
+				}
+				// Create activities linked directly to the plan
 				if (plannedItems.length > 0) {
-					const todoResults = await searchTags('ToDo');
-					const todoTag = todoResults.find(t => t.name.toLowerCase() === 'todo') ?? await createWildTag('ToDo', undefined, 'activity');
-					const planTagResults = await searchTags(title.trim());
-					const planTag = planTagResults.find(t => t.entity_type === 'plan' && t.entity_id === created.id);
 					for (let i = 0; i < plannedItems.length; i++) {
-						const activity = await createActivity({ title: plannedItems[i].title });
-						await attachTag(todoTag.id, 'activity', activity.id);
-						if (planTag) await attachTag(planTag.id, 'activity', activity.id);
-						await addPlanItem(created.id, {
-							activity_id: activity.id,
+						await createActivity({
+							title: plannedItems[i].title,
+							plan_id: created.id,
 							position: i,
+							status: 'todo',
 							header: plannedItems[i].header ?? undefined
 						});
 					}
 				}
 				await loadActivities();
 			}
-			await Promise.all([loadPlans(), loadTags()]);
+			await Promise.all([loadPlans(), loadTags(), loadNotes()]);
 			onDone(createdId);
 		} catch (err) {
 			console.error('[PlanForm] Submit error:', err);
@@ -185,12 +211,33 @@
 <form onsubmit={handleSubmit} class="widget">
 	<input type="text" bind:value={title} required placeholder="Plan title..." class="title-input" />
 	<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
-	<input type="text" bind:value={motivation} placeholder="Motivation (optional)" class="field-input" />
-	<input type="text" bind:value={outcome} placeholder="Expected outcome (optional)" class="field-input" />
 	<div class="date-row">
 		<label class="date-label">Start <input type="date" bind:value={startDate} class="date-input" /></label>
 		<label class="date-label">End <input type="date" bind:value={endDate} class="date-input" /></label>
 	</div>
+	{#if !editData}
+		{#each ROLE_KEYS as role}
+			<div class="role-section">
+				<div class="role-section-header">{ROLE_LABELS[role]}</div>
+				{#each roleItems[role] as item, i}
+					<div class="role-item">
+						<span class="role-item-text">{item}</span>
+						<button type="button" class="btn-remove-item" onclick={() => removeRoleItem(role, i)}>-</button>
+					</div>
+				{/each}
+				<div class="add-item-row">
+					<input
+						type="text"
+						class="add-item-input"
+						placeholder="Add {ROLE_LABELS[role].toLowerCase()}..."
+						bind:value={roleNewTexts[role]}
+						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRoleItem(role); } }}
+					/>
+					<button type="button" class="btn-add-item" onclick={() => addRoleItem(role)}>+</button>
+				</div>
+			</div>
+		{/each}
+	{/if}
 	{#if !editData}
 		<div class="items-section">
 			{#each formSections as section}
@@ -258,7 +305,7 @@
 				<button type="button" class="btn-add-section" onclick={() => { addingSection = true; newSectionName = ''; }}>+ Section</button>
 			{/if}
 		</div>
-		<DefaultTagSuggestions category="plan" bind:selectedTagIds />
+		<DefaultTagSuggestions category="plan" bind:selectedTagIds {title} />
 	{/if}
 	<div class="button-row">
 		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>
@@ -271,7 +318,6 @@
 	.title-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
 	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 	.field-textarea { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; resize: vertical; font-family: inherit; }
-	.field-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
 	.date-row { display: flex; gap: 8px; }
 	.date-label { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #6b7280; }
 	.date-input { padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.8rem; }
@@ -300,6 +346,12 @@
 	.add-section-row { display: flex; gap: 4px; margin-top: 6px; }
 	.add-section-input-field { flex: 1; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.78rem; }
 	.btn-cancel-section { font-size: 0.7rem; padding: 2px 8px; background: white; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; }
+
+	/* Role note sections */
+	.role-section { padding: 4px 0; }
+	.role-section-header { font-size: 0.75rem; font-weight: 600; color: #4a90a4; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
+	.role-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+	.role-item-text { flex: 1; font-size: 0.8rem; color: #374151; }
 
 	/* Drag-and-drop */
 	.section-drop-zone { border-radius: 6px; border: 2px solid transparent; padding: 2px; transition: border-color 0.15s, background 0.15s; }

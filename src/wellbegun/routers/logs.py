@@ -28,7 +28,7 @@ def get_log(log_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=LogOut, status_code=201)
 def create_log(data: LogCreate, db: Session = Depends(get_db)):
-    return log_service.create_log(db, log_type=data.log_type, title=data.title, content=data.content)
+    return log_service.create_log(db, title=data.title, content=data.content)
 
 
 @router.put("/{log_id}", response_model=LogOut)

@@ -34,6 +34,16 @@ export async function deleteNote(id: number): Promise<void> {
 	await fetch(`${BASE}/${id}`, { method: 'DELETE' });
 }
 
+export async function activateNote(id: number): Promise<Note> {
+	const res = await fetch(`${BASE}/${id}/activate`, { method: 'POST' });
+	return res.json();
+}
+
+export async function deactivateNote(id: number): Promise<Note> {
+	const res = await fetch(`${BASE}/${id}/deactivate`, { method: 'POST' });
+	return res.json();
+}
+
 export async function archiveNote(id: number): Promise<Note> {
 	const res = await fetch(`${BASE}/${id}/archive`, { method: 'POST' });
 	return res.json();

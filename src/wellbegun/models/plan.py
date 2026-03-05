@@ -14,8 +14,10 @@ class Plan(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     motivation: Mapped[str | None] = mapped_column(Text, nullable=True)
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    goal: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     end_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="planned", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -27,6 +29,13 @@ class Plan(Base):
 
     items: Mapped[list["PlanItem"]] = relationship(
         "PlanItem", back_populates="plan", cascade="all, delete-orphan"
+    )
+
+    activities: Mapped[list["Activity"]] = relationship(
+        "Activity",
+        foreign_keys="Activity.plan_id",
+        order_by="Activity.position",
+        lazy="joined",
     )
 
 

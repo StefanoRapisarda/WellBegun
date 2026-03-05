@@ -13,12 +13,25 @@ def get_by_id(db: Session, activity_id: int) -> Activity | None:
     return db.query(Activity).filter(Activity.id == activity_id).first()
 
 
+def get_by_plan(db: Session, plan_id: int) -> list[Activity]:
+    return (
+        db.query(Activity)
+        .filter(Activity.plan_id == plan_id)
+        .order_by(Activity.position)
+        .all()
+    )
+
+
 def create(
     db: Session,
     title: str,
     description: str | None = None,
     duration: int | None = None,
     log_id: int | None = None,
+    plan_id: int | None = None,
+    source_id: int | None = None,
+    position: int = 0,
+    header: str | None = None,
     status: str = "todo",
 ) -> Activity:
     activity = Activity(
@@ -26,6 +39,10 @@ def create(
         description=description,
         duration=duration,
         log_id=log_id,
+        plan_id=plan_id,
+        source_id=source_id,
+        position=position,
+        header=header,
         status=status,
     )
     db.add(activity)
@@ -54,9 +71,6 @@ def delete(db: Session, activity_id: int) -> bool:
     activity = get_by_id(db, activity_id)
     if not activity:
         return False
-    # Remove any plan_items referencing this activity
-    from wellbegun.models.plan import PlanItem
-    db.query(PlanItem).filter(PlanItem.activity_id == activity_id).delete()
     delete_entity_tag(db, "activity", activity_id)
     delete_entity_graph_data(db, "activity", activity_id)
     db.delete(activity)
@@ -95,6 +109,7 @@ def archive(db: Session, activity_id: int) -> Activity | None:
     if not activity:
         return None
     activity.is_archived = True
+    activity.is_active = False
     db.commit()
     db.refresh(activity)
     return activity

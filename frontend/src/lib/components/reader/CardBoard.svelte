@@ -11,7 +11,6 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
 		plan: '#6b8ba3'
 	};
 
@@ -259,12 +258,6 @@
 			cardWidth={CARD_W}
 			cardHeight={CARD_H}
 			collapsedNodes={emptyCollapsed}
-			{editingTripleId}
-			{editingPredicate}
-			onPredicateDblClick={handlePredicateDblClick}
-			onPredicateChange={handlePredicateChange}
-			onPredicateBlur={handlePredicateBlur}
-			onPredicateKeydown={handlePredicateKeydown}
 			onConnectionSwap={handleConnectionSwap}
 			onConnectionDelete={handleConnectionDelete}
 			onPredicateSelect={handlePredicateSelect}

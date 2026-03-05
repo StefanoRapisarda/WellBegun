@@ -213,7 +213,7 @@
 		try {
 			switch (entityType) {
 				case 'project': created = await createProject({ title: `New Project ${now}` }); await loadProjects(); break;
-				case 'log': created = await createLog({ title: `New Log ${now}`, log_type: 'diary' }); await loadLogs(); break;
+				case 'log': created = await createLog({ title: `New Log ${now}` }); await loadLogs(); break;
 				case 'note': created = await createNote({ title: `New Note ${now}` }); await loadNotes(); break;
 				case 'activity': created = await createActivity({ title: `New Activity ${now}` }); await loadActivities(); break;
 				case 'source': created = await createSource({ title: `New Source ${now}` }); await loadSources(); break;
@@ -565,6 +565,7 @@
 				/>
 				<QueryPanel
 					open={queryPanelOpen}
+					onClose={() => queryPanelOpen = false}
 					onResultClick={handleQueryResult}
 					resultActionLabel="Add to board"
 				/>

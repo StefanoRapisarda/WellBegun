@@ -29,6 +29,7 @@ def create_entity_tag(
 
 
 def delete_entity_tag(db: Session, entity_type: str, entity_id: int) -> None:
+    # Remove the entity's own tag and any EntityTags pointing FROM it
     tag = (
         db.query(Tag)
         .filter(Tag.entity_type == entity_type, Tag.entity_id == entity_id)
@@ -39,6 +40,16 @@ def delete_entity_tag(db: Session, entity_type: str, entity_id: int) -> None:
             delete(EntityTag).where(EntityTag.tag_id == tag.id)
         )
         db.delete(tag)
+
+    # Also remove any EntityTags where this entity is the TARGET
+    # (e.g. wild tags attached to this entity). This prevents orphaned
+    # tag attachments from leaking to new entities if IDs are reused.
+    db.execute(
+        delete(EntityTag).where(
+            EntityTag.target_type == entity_type,
+            EntityTag.target_id == entity_id,
+        )
+    )
 
 
 def update_entity_tag(db: Session, entity_type: str, entity_id: int, new_name: str) -> Tag | None:
@@ -98,10 +109,12 @@ def _target_exists(db: Session, target_type: str, target_id: int) -> bool:
 
     from wellbegun.models.plan import Plan
 
+    from wellbegun.models.collection import Collection
+
     model_map = {
         "note": Note, "project": Project, "log": Log,
         "activity": Activity, "source": Source, "actor": Actor,
-        "plan": Plan,
+        "plan": Plan, "collection": Collection,
     }
     model = model_map.get(target_type)
     if model is None:
@@ -136,9 +149,11 @@ def attach_tag(db: Session, tag_id: int, target_type: str, target_id: int) -> En
     # Auto-create triple for entity tags
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if tag and tag.entity_type is not None:
+        from sqlalchemy.exc import IntegrityError
         from wellbegun.models.knowledge_triple import KnowledgeTriple
         from wellbegun.services.structural_relations import get_structural_predicate
 
+        # Check both directions to avoid duplicate connections
         existing_triple = db.query(KnowledgeTriple).filter(
             KnowledgeTriple.subject_type == tag.entity_type,
             KnowledgeTriple.subject_id == tag.entity_id,
@@ -146,7 +161,30 @@ def attach_tag(db: Session, tag_id: int, target_type: str, target_id: int) -> En
             KnowledgeTriple.object_id == target_id,
         ).first()
         if not existing_triple:
+            existing_triple = db.query(KnowledgeTriple).filter(
+                KnowledgeTriple.subject_type == target_type,
+                KnowledgeTriple.subject_id == target_id,
+                KnowledgeTriple.object_type == tag.entity_type,
+                KnowledgeTriple.object_id == tag.entity_id,
+            ).first()
+        if not existing_triple:
             predicate = get_structural_predicate(tag.entity_type, target_type)
+
+            # Override predicate for actor → activity when the activity
+            # is tagged as a meeting (or similar event-type tags).
+            if tag.entity_type == "actor" and target_type == "activity":
+                meeting_tags = {"meeting", "meetings", "seminar", "workshop", "conference"}
+                activity_tag_names = set()
+                for et in db.query(EntityTag).filter(
+                    EntityTag.target_type == "activity",
+                    EntityTag.target_id == target_id,
+                ).all():
+                    t = db.query(Tag).filter(Tag.id == et.tag_id).first()
+                    if t is not None:
+                        activity_tag_names.add(t.name.lower())
+                if meeting_tags & activity_tag_names:
+                    predicate = "attends"
+
             triple = KnowledgeTriple(
                 subject_type=tag.entity_type,
                 subject_id=tag.entity_id,
@@ -155,7 +193,13 @@ def attach_tag(db: Session, tag_id: int, target_type: str, target_id: int) -> En
                 object_id=target_id,
             )
             db.add(triple)
-            db.flush()
+            try:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                # Re-add the entity_tag since rollback removed it
+                db.add(entity_tag)
+                db.flush()
 
     return entity_tag
 
@@ -454,19 +498,6 @@ def seed_default_tags(db: Session) -> None:
     # category, keep the one with the most attachments and delete the rest.
     _deduplicate_tags(db)
 
-    # Migrate status tags from their old categories before seeding
-    _migrate_tags_to_category(
-        db,
-        ["ToDo", "InProgress", "Done", "Blocked"],
-        ["activity"],
-        "status",
-    )
-    _migrate_tags_to_category(
-        db,
-        ["ToRead", "Reviewed"],
-        ["source"],
-        "status",
-    )
     # Move Milestone back to note if it was previously migrated to status
     _migrate_tags_to_category(
         db,
@@ -475,11 +506,20 @@ def seed_default_tags(db: Session) -> None:
         "note",
     )
 
+    # Phase 5: Clean up status tag category — status is now a column, not a tag
+    status_tags = (
+        db.query(Tag)
+        .filter(Tag.category == "status", Tag.entity_id.is_(None))
+        .all()
+    )
+    for tag in status_tags:
+        db.execute(delete(EntityTag).where(EntityTag.tag_id == tag.id))
+        db.delete(tag)
+
     defaults_by_category = {
-        "status": ["ToDo", "InProgress", "Done", "Blocked", "ToRead", "Reviewed", "OnHold", "Cancelled"],
         "activity": ["Meeting", "Coding", "Reading", "Writing", "Review", "Research", "Planning", "Designing"],
-        "note": ["Idea", "Quote", "Definition", "Question", "Feature", "Milestone"],
-        "log": ["Progress", "Decision", "Issue", "Reflection", "Insight"],
+        "note": ["Idea", "Quote", "Definition", "Question", "Feature", "Milestone", "Goal", "Motivation", "Outcome"],
+        "log": ["Daily Log", "Progress", "Decision", "Issue", "Reflection", "Insight", "Workspace", "Work", "Travel", "Health"],
         "project": ["Personal", "Work", "SideProject", "Experiment"],
     }
     for category, tag_names in defaults_by_category.items():
@@ -505,7 +545,42 @@ def seed_default_tags(db: Session) -> None:
         if (tag.category, tag.name) not in all_default_names:
             db.execute(delete(EntityTag).where(EntityTag.tag_id == tag.id))
             db.delete(tag)
+    # Tag existing plan-linked notes with Goal/Motivation/Outcome tags
+    _tag_existing_role_notes(db)
+
     db.commit()
+
+
+def _tag_existing_role_notes(db: Session) -> None:
+    """One-time migration: attach Goal/Motivation/Outcome tags to notes
+    already linked to plans via knowledge triples."""
+    from wellbegun.models.knowledge_triple import KnowledgeTriple
+
+    predicate_to_tag = {
+        "has motivation": "Motivation",
+        "has goal": "Goal",
+        "has outcome": "Outcome",
+    }
+
+    role_triples = (
+        db.query(KnowledgeTriple)
+        .filter(
+            KnowledgeTriple.subject_type == "plan",
+            KnowledgeTriple.object_type == "note",
+            KnowledgeTriple.predicate.in_(list(predicate_to_tag.keys())),
+        )
+        .all()
+    )
+
+    for triple in role_triples:
+        tag_name = predicate_to_tag.get(triple.predicate)
+        if not tag_name:
+            continue
+        tag = get_tag_by_name(db, tag_name)
+        if not tag:
+            continue
+        # attach_tag is idempotent — skips if already attached
+        attach_tag(db, tag.id, "note", triple.object_id)
 
 
 def seed_wild_tags(db: Session) -> None:

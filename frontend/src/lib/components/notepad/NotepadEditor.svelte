@@ -8,8 +8,8 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
-	import { readingLists } from '$lib/stores/readingLists';
 	import { plans } from '$lib/stores/plans';
+	import { collections } from '$lib/stores/collections';
 
 	// ── Quick-add entity buttons ──
 	const ENTITY_BUTTONS: { type: NotepadEntityType; label: string; color: string }[] = [
@@ -19,7 +19,6 @@
 		{ type: 'activity', label: '+Activity', color: '#b5838d' },
 		{ type: 'source', label: '+Source', color: '#c9a227' },
 		{ type: 'actor', label: '+Actor', color: '#8b4557' },
-		{ type: 'reading_list', label: '+ReadList', color: '#5f9ea0' },
 		{ type: 'plan', label: '+Plan', color: '#6b8ba3' }
 	];
 
@@ -107,16 +106,17 @@
 		const lineStart = lastNewline + 1;
 		const lineText = textBefore.slice(lineStart);
 
-		const match = lineText.match(/^(\s*)@(\w*)$/);
+		const match = lineText.match(/^(\s*)(@@?)(\w*)$/);
 		if (match) {
-			const query = match[2].toLowerCase();
+			const prefix = match[2]; // '@' or '@@'
+			const query = match[3].toLowerCase();
 			const filtered = VALID_ENTITY_TYPES.filter(t => t.startsWith(query));
 			if (filtered.length > 0) {
 				replaceStart = lineStart + match[1].length;
 				suggestions = filtered.map(t => ({
-					label: `@${t}`,
+					label: `${prefix}${t}`,
 					color: getColor(t),
-					insertValue: `@${t}`
+					insertValue: `${prefix}${t}`
 				}));
 				selectedIndex = 0;
 				suggestionMode = 'type';
@@ -145,10 +145,18 @@
 		// Need at least 2 characters to search
 		if (trimmed.length < 2) return false;
 
-		// Scan backwards for the @tag that starts this block
+		// Scan backwards for the @tag or @@tag that starts this block
 		let entityType: NotepadEntityType | null = null;
 		let tagLineIdx = -1;
+		let isListBlock = false;
 		for (let i = currentLineIdx - 1; i >= 0; i--) {
+			const listTagMatch = lines[i].trim().match(/^@@(\w+)$/);
+			if (listTagMatch && VALID_ENTITY_TYPES.includes(listTagMatch[1] as NotepadEntityType)) {
+				entityType = listTagMatch[1] as NotepadEntityType;
+				tagLineIdx = i;
+				isListBlock = true;
+				break;
+			}
 			const tagMatch = lines[i].trim().match(/^@(\w+)/);
 			if (tagMatch && VALID_ENTITY_TYPES.includes(tagMatch[1] as NotepadEntityType)) {
 				entityType = tagMatch[1] as NotepadEntityType;
@@ -158,11 +166,13 @@
 		}
 		if (!entityType || tagLineIdx === -1) return false;
 
-		// Only suggest on the primary field line (first non-empty line after the tag)
-		for (let i = tagLineIdx + 1; i < currentLineIdx; i++) {
-			if (lines[i].trim()) {
-				// There's already a non-empty line before this one — cursor is past the primary field
-				return false;
+		// In @@ list blocks, allow suggestions on every line
+		// In regular blocks, only suggest on the primary field line
+		if (!isListBlock) {
+			for (let i = tagLineIdx + 1; i < currentLineIdx; i++) {
+				if (lines[i].trim()) {
+					return false;
+				}
 			}
 		}
 
@@ -207,7 +217,7 @@
 					.map(p => ({ ...mapFn(p, 'description'), detail: p.status }));
 			case 'log':
 				return get(logs).filter(l => l.title.toLowerCase().includes(q)).slice(0, 8)
-					.map(l => ({ ...mapFn(l, 'content'), detail: l.log_type }));
+					.map(l => mapFn(l, 'content'));
 			case 'activity':
 				return get(activities).filter(a => a.title.toLowerCase().includes(q)).slice(0, 8)
 					.map(a => mapFn(a, 'description'));
@@ -217,12 +227,12 @@
 			case 'actor':
 				return get(actors).filter(a => a.full_name.toLowerCase().includes(q)).slice(0, 8)
 					.map(a => ({ ...mapFn(a), detail: a.role ?? undefined }));
-			case 'reading_list':
-				return get(readingLists).filter(rl => rl.title.toLowerCase().includes(q)).slice(0, 8)
-					.map(rl => mapFn(rl, 'description'));
 			case 'plan':
 				return get(plans).filter(p => p.title.toLowerCase().includes(q)).slice(0, 8)
 					.map(p => mapFn(p, 'description'));
+			case 'collection':
+				return get(collections).filter(c => c.title.toLowerCase().includes(q)).slice(0, 8)
+					.map(c => mapFn(c, 'description'));
 			default:
 				return [];
 		}
@@ -323,6 +333,15 @@
 				{btn.label}
 			</button>
 		{/each}
+		<div class="toolbar-spacer"></div>
+		<button
+			class="clear-btn"
+			onclick={() => { if (!value.trim() || confirm('Clear all editor content?')) { value = ''; notepadText.set(''); } }}
+			disabled={!value.trim()}
+			title="Clear editor"
+		>
+			Clear
+		</button>
 	</div>
 	<div class="textarea-wrapper">
 		<textarea
@@ -385,6 +404,29 @@
 	.entity-btn:hover {
 		background: var(--btn-color);
 		color: white;
+	}
+	.toolbar-spacer {
+		flex: 1;
+	}
+	.clear-btn {
+		padding: 3px 8px;
+		border: 1px solid #d1d5db;
+		border-radius: 6px;
+		background: white;
+		cursor: pointer;
+		font-size: 0.68rem;
+		color: #9ca3af;
+		font-weight: 500;
+		transition: all 0.15s;
+	}
+	.clear-btn:hover:not(:disabled) {
+		background: #fee2e2;
+		color: #dc2626;
+		border-color: #fecaca;
+	}
+	.clear-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 	.textarea-wrapper {
 		position: relative;

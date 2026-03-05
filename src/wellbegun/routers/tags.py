@@ -93,6 +93,8 @@ def delete_wild_tag(tag_id: int, db: Session = Depends(get_db)):
 @router.post("/attach", response_model=EntityTagOut)
 def attach_tag(data: AttachDetachRequest, db: Session = Depends(get_db)):
     et = tag_service.attach_tag(db, data.tag_id, data.target_type, data.target_id)
+    if et is None:
+        raise HTTPException(status_code=404, detail="Target entity not found")
     db.commit()
     db.refresh(et)
     return et

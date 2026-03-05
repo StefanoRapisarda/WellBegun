@@ -7,16 +7,16 @@
 	import { deactivateLog } from '$lib/api/logs';
 	import { deactivateSource } from '$lib/api/sources';
 	import { deactivateActor } from '$lib/api/actors';
-	import { deactivateReadingList } from '$lib/api/readingLists';
 	import { clearAllLastUsedTags } from '$lib/stores/lastUsedTags';
 	import { loadProjects } from '$lib/stores/projects';
 	import { loadLogs } from '$lib/stores/logs';
-	import { loadNotes } from '$lib/stores/notes';
+	import { notes, loadNotes } from '$lib/stores/notes';
 	import { loadSources } from '$lib/stores/sources';
 	import { loadActors } from '$lib/stores/actors';
 	import { loadActivities } from '$lib/stores/activities';
-	import { loadReadingLists } from '$lib/stores/readingLists';
 	import { loadPlans } from '$lib/stores/plans';
+	import { loadCollections } from '$lib/stores/collections';
+	import { loadCategories } from '$lib/stores/categories';
 	import { loadTags } from '$lib/stores/tags';
 	import { activeTab } from '$lib/stores/activeTab';
 	import { get } from 'svelte/store';
@@ -26,20 +26,34 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
-	import { readingLists } from '$lib/stores/readingLists';
 	import { plans } from '$lib/stores/plans';
+	import { collections } from '$lib/stores/collections';
 	import { deactivatePlan } from '$lib/api/plans';
-	import { showArchived, showActiveRelated } from '$lib/stores/dateFilter';
+	import { deactivateCollection } from '$lib/api/collections';
+	import { panelSelection, selectedEntities, selectedCount } from '$lib/stores/panelSelection';
+	import { graphInitialSelection } from '$lib/stores/graphInitialSelection';
+	import { clearGraphFilters } from '$lib/stores/knowledgeGraph';
+	import { notepadText } from '$lib/stores/notepad';
+	import { serializeEntity } from '$lib/notepad/parser';
+	import { entityToNotepadFields } from '$lib/notepad/utils';
+	import type { NotepadEntityType } from '$lib/notepad/types';
+	import { getEntityTags } from '$lib/api/tags';
+	import { getTriplesForEntity } from '$lib/api/knowledge';
+	import { getCollection } from '$lib/api/collections';
+	import { showArchived, showActiveRelated, resetToAll } from '$lib/stores/dateFilter';
 	import DateFilterControl from '$lib/components/shared/DateFilterControl.svelte';
 	import TagFilterControl from '$lib/components/shared/TagFilterControl.svelte';
 	import DashboardHome from '$lib/components/DashboardHome.svelte';
 	import FocusEditor from '$lib/components/writer/FocusEditor.svelte';
 	import ProjectScaffoldingPanel from '$lib/components/scaffolding/ProjectScaffoldingPanel.svelte';
-	import AiAssistant from '$lib/components/ai/AiAssistant.svelte';
+	// import AiAssistant from '$lib/components/ai/AiAssistant.svelte';
 	import KnowledgeGraph from '$lib/components/graph/KnowledgeGraph.svelte';
 	import ReadTab from '$lib/components/reader/ReadTab.svelte';
 	import NotepadTab from '$lib/components/notepad/NotepadTab.svelte';
+	import CoffeeTab from '$lib/components/coffee/CoffeeTab.svelte';
 	import SchemaTab from '$lib/components/schema/SchemaTab.svelte';
+	import WorkspaceTab from '$lib/components/workspace/WorkspaceTab.svelte';
+	import { loadWorkspaces } from '$lib/stores/workspaces';
 	import Logo from '$lib/components/shared/Logo.svelte';
 
 	let { children } = $props();
@@ -81,8 +95,8 @@
 	let activeActivities = $derived($activities.filter((a) => a.is_active));
 	let activeSources = $derived($sources.filter((s) => s.is_active));
 	let activeActors = $derived($actors.filter((a) => a.is_active));
-	let activeReadingLists = $derived($readingLists.filter((r) => r.is_active));
 	let activePlans = $derived($plans.filter((p) => p.is_active));
+	let activeCollections = $derived($collections.filter((c) => c.is_active));
 
 	const ENTITY_COLORS: Record<string, string> = {
 		project: '#5c7a99',
@@ -91,8 +105,8 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
-		plan: '#6b8ba3'
+		plan: '#6b8ba3',
+		collection: '#7c6f9e'
 	};
 
 	// All active entity items for the "Working on..." bar, with colors
@@ -104,7 +118,7 @@
 		for (const l of activeLogs) items.push({ name: truncate(l.title, 30), color: ENTITY_COLORS.log });
 		for (const s of activeSources) items.push({ name: truncate(s.title, 30), color: ENTITY_COLORS.source });
 		for (const a of activeActors) items.push({ name: truncate(a.full_name, 30), color: ENTITY_COLORS.actor });
-		for (const r of activeReadingLists) items.push({ name: truncate(r.title, 30), color: ENTITY_COLORS.reading_list });
+		for (const c of activeCollections) items.push({ name: truncate(c.title, 30), color: ENTITY_COLORS.collection });
 		return items;
 	});
 
@@ -149,14 +163,14 @@
 		await loadActors();
 	}
 
-	async function handleDeactivateReadingList(id: number) {
-		await deactivateReadingList(id);
-		await loadReadingLists();
-	}
-
 	async function handleDeactivatePlan(id: number) {
 		await deactivatePlan(id);
 		await loadPlans();
+	}
+
+	async function handleDeactivateCollection(id: number) {
+		await deactivateCollection(id);
+		await loadCollections();
 	}
 
 	$effect(() => {
@@ -165,6 +179,103 @@
 			return () => document.removeEventListener('click', handleWorkingOnPanelClickOutside, true);
 		}
 	});
+
+	// Store map for resolving entities by type
+	const entityStoreMap: Record<string, any> = {
+		project: projects, log: logs, note: notes, activity: activities,
+		source: sources, actor: actors,
+		plan: plans, collection: collections,
+	};
+
+	let showGraphRelated = $state(true);
+
+	function sendToGraph() {
+		const sel = get(selectedEntities);
+		if (sel.length > 0) {
+			graphInitialSelection.set({
+				entities: sel.map(e => ({ type: e.entityType, id: e.entityId })),
+				pulsingKeys: sel.map(e => `${e.entityType}:${e.entityId}`),
+				showRelated: showGraphRelated,
+			});
+			resetToAll();
+			panelSelection.clear();
+		}
+		activeTab.set('graph');
+	}
+
+	async function serializeOneEntity(entityType: string, entityId: number): Promise<string> {
+		const store = entityStoreMap[entityType];
+		if (!store) return '';
+		const items = get(store) as any[];
+		const entity = items.find((item: any) => item.id === entityId);
+		if (!entity) return '';
+		const fields = entityToNotepadFields(entityType, entity);
+		const tags = await getEntityTags(entityType, entityId);
+		if (tags.length > 0) {
+			fields.tags = tags.map((t: any) => t.name).join(', ');
+		}
+		return serializeEntity(entityType as NotepadEntityType, fields, undefined, entity.id);
+	}
+
+	async function serializeWithChildren(entityType: string, entityId: number): Promise<string> {
+		const parentBlock = await serializeOneEntity(entityType, entityId);
+		if (!parentBlock) return '';
+
+		// Fetch outgoing triples (entity as subject)
+		const triples = await getTriplesForEntity(entityType, entityId);
+		const outgoing = triples.filter(t => t.subject_type === entityType && t.subject_id === entityId);
+		if (outgoing.length === 0) return parentBlock;
+
+		// Serialize each linked child entity, expanding collections
+		const childBlocks: string[] = [];
+		const seen = new Set<string>([`${entityType}:${entityId}`]);
+		for (const triple of outgoing) {
+			const key = `${triple.object_type}:${triple.object_id}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			const childBlock = await serializeOneEntity(triple.object_type, triple.object_id);
+			if (childBlock) childBlocks.push(childBlock);
+
+			// Expand collection members
+			if (triple.object_type === 'collection') {
+				try {
+					const coll = await getCollection(triple.object_id);
+					if (coll?.items) {
+						for (const item of coll.items) {
+							const itemKey = `${item.member_entity_type}:${item.member_entity_id}`;
+							if (seen.has(itemKey)) continue;
+							seen.add(itemKey);
+							const itemBlock = await serializeOneEntity(item.member_entity_type, item.member_entity_id);
+							if (itemBlock) childBlocks.push(itemBlock);
+						}
+					}
+				} catch (e) {
+					console.warn(`Failed to expand collection ${triple.object_id}:`, e);
+				}
+			}
+		}
+
+		if (childBlocks.length === 0) return parentBlock;
+		return [parentBlock, ...childBlocks].join('\n\n');
+	}
+
+	async function sendToNotepad() {
+		const sel = get(selectedEntities);
+		if (sel.length > 0) {
+			const blocks: string[] = [];
+			for (const e of sel) {
+				const block = await serializeWithChildren(e.entityType, e.entityId);
+				if (block) blocks.push(block);
+			}
+			if (blocks.length > 0) {
+				const newText = blocks.join('\n\n');
+				const current = get(notepadText);
+				notepadText.set(current.trim() ? current.trimEnd() + '\n\n' + newText : newText);
+			}
+			panelSelection.clear();
+		}
+		activeTab.set('notepad');
+	}
 
 	// Load all stores on app start
 	onMount(async () => {
@@ -184,9 +295,11 @@
 			loadSources(),
 			loadActors(),
 			loadActivities(),
-			loadReadingLists(),
 			loadPlans(),
-			loadTags()
+			loadCollections(),
+			loadCategories(),
+			loadTags(),
+			loadWorkspaces()
 		]).then((results) => {
 			for (const r of results) {
 				if (r.status === 'rejected') {
@@ -218,6 +331,8 @@
 				<button class="tab-btn" class:active={$activeTab === 'input'} onclick={() => activeTab.set('input')}>Cards</button>
 				<button class="tab-btn" class:active={$activeTab === 'notepad'} onclick={() => activeTab.set('notepad')}>Notepad</button>
 				<button class="tab-btn" class:active={$activeTab === 'graph'} onclick={() => activeTab.set('graph')}>Graph</button>
+				<button class="tab-btn" class:active={$activeTab === 'workspace'} onclick={() => activeTab.set('workspace')}>Workspace</button>
+	<button class="tab-btn" class:active={$activeTab === 'coffee'} onclick={() => activeTab.set('coffee')}>Coffee Table</button>
 				<div class="tools-wrapper">
 					<button
 						class="tab-btn"
@@ -316,13 +431,13 @@
 							{/each}
 						</div>
 					{/if}
-					{#if activeReadingLists.length > 0}
+					{#if activeCollections.length > 0}
 						<div class="wop-group">
-							<h4 class="wop-group-label">Reading Lists</h4>
-							{#each activeReadingLists as rl (rl.id)}
+							<h4 class="wop-group-label">Collections</h4>
+							{#each activeCollections as col (col.id)}
 								<div class="wop-item">
-									<span class="wop-item-title">{rl.title}</span>
-									<button class="wop-deactivate" onclick={(e) => { e.stopPropagation(); handleDeactivateReadingList(rl.id); }} title="Deactivate">&times;</button>
+									<span class="wop-item-title">{col.title}</span>
+									<button class="wop-deactivate" onclick={(e) => { e.stopPropagation(); handleDeactivateCollection(col.id); }} title="Deactivate">&times;</button>
 								</div>
 							{/each}
 						</div>
@@ -358,7 +473,17 @@
 					<DateFilterControl />
 					<TagFilterControl />
 					{#if $activeTab === 'input'}
-						<button class="view-switch-btn" onclick={() => activeTab.set('graph')} title="Switch to Graph view">
+						<label class="archived-toggle">
+							<input type="checkbox" bind:checked={showGraphRelated} />
+							Show Related
+						</label>
+						<button class="view-switch-btn" onclick={sendToNotepad} title="Send selection to Notepad">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+							</svg>
+							Notepad
+						</button>
+						<button class="view-switch-btn" onclick={sendToGraph} title="Send selection to Graph view">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 								<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3"/>
 								<line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="15.5" y1="6" x2="8.5" y2="6"/>
@@ -366,6 +491,12 @@
 							Graph
 						</button>
 					{:else if $activeTab === 'graph'}
+						<button class="view-switch-btn" onclick={clearGraphFilters} title="Show all graph nodes (clear filter)">
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+							</svg>
+							Clear
+						</button>
 						<button class="view-switch-btn" onclick={() => activeTab.set('input')} title="Switch to Cards view">
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 								<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -378,7 +509,7 @@
 			</div>
 		{/if}
 	</header>
-	<main class:no-padding={$activeTab === 'write' || $activeTab === 'read' || $activeTab === 'graph' || $activeTab === 'notepad' || $activeTab === 'schema'}>
+	<main class:no-padding={$activeTab === 'write' || $activeTab === 'read' || $activeTab === 'graph' || $activeTab === 'notepad' || $activeTab === 'coffee' || $activeTab === 'schema' || $activeTab === 'workspace'}>
 		{#if $activeTab === 'dashboard'}
 			<DashboardHome />
 		{:else if $activeTab === 'input'}
@@ -391,15 +522,19 @@
 			<ReadTab />
 		{:else if $activeTab === 'scaffold'}
 			<ProjectScaffoldingPanel />
+		{:else if $activeTab === 'coffee'}
+			<CoffeeTab />
 		{:else if $activeTab === 'graph'}
 			<KnowledgeGraph />
 		{:else if $activeTab === 'schema'}
 			<SchemaTab />
+		{:else if $activeTab === 'workspace'}
+			<WorkspaceTab />
 		{/if}
 	</main>
 </div>
 
-<AiAssistant />
+<!-- <AiAssistant /> -->
 
 <style>
 	.app {

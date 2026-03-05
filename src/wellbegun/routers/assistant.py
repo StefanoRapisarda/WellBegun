@@ -6,11 +6,10 @@ import os
 import json
 import re
 from datetime import datetime, timedelta
-from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_
 
 from wellbegun.database import get_db
 from wellbegun.models import Log, Activity, Note, Project, Source, Actor, Tag, EntityTag
@@ -100,7 +99,7 @@ def extract_entity_type_intent(text: str) -> list[str]:
     types = []
 
     if any(w in text for w in ['meeting', 'meetings']):
-        types.append('meeting')  # log_type
+        types.append('meeting')  # matched via tags
     if any(w in text for w in ['log', 'logs', 'diary', 'diaries', 'entry', 'entries']):
         types.append('log')
     if any(w in text for w in ['note', 'notes']):
@@ -127,8 +126,19 @@ def extract_keywords(text: str) -> list[str]:
                  'today', 'yesterday', 'week', 'month', 'year', 'last', 'next', 'show',
                  'find', 'search', 'get', 'list', 'all', 'some', 'how', 'many', 'much'}
 
+    # Entity-type words and meta-words describe *what* to search, not search content
+    entity_words = {
+        'activity', 'activities', 'task', 'tasks',
+        'note', 'notes', 'log', 'logs', 'entry', 'entries',
+        'project', 'projects', 'source', 'sources', 'reference', 'references',
+        'actor', 'actors', 'person', 'people', 'contact', 'contacts',
+        'meeting', 'meetings', 'plan', 'plans',
+        'entity', 'entities', 'item', 'items',
+        'status', 'type', 'kind', 'category',
+    }
+
     words = re.findall(r'\b\w+\b', text.lower())
-    keywords = [w for w in words if w not in stopwords and len(w) > 2]
+    keywords = [w for w in words if w not in stopwords and w not in entity_words and len(w) > 2]
     return keywords
 
 
@@ -149,6 +159,40 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
     # Extract search keywords
     keywords = extract_keywords(question)
 
+    # ── Status-aware keyword splitting ──
+    # Maps every recognised status token to the canonical (model-level) value.
+    # Includes natural-language aliases so "planned" or "reading" are caught too.
+    _STATUS_VALUES: dict[str, dict[str, str]] = {
+        'activity': {
+            'todo': 'todo', 'in_progress': 'in_progress', 'done': 'done',
+            'on_hold': 'on_hold', 'cancelled': 'cancelled',
+        },
+        'project': {
+            'in_progress': 'in_progress', 'completed': 'completed',
+            'on_hold': 'on_hold', 'cancelled': 'cancelled',
+        },
+        'plan': {
+            'planned': 'planned', 'active': 'active',
+            'completed': 'completed', 'cancelled': 'cancelled',
+        },
+        'source': {
+            'to_read': 'to_read', 'reading': 'reading', 'read': 'read',
+        },
+    }
+
+    # All tokens that could be a status for *any* entity type
+    _ALL_STATUS_TOKENS: set[str] = set()
+    for _v in _STATUS_VALUES.values():
+        _ALL_STATUS_TOKENS.update(_v.keys())
+
+    def _split_status_keywords(entity_type: str) -> tuple[list[str], list[str]]:
+        """Return (status_values, text_keywords) for a given entity type."""
+        mapping = _STATUS_VALUES.get(entity_type, {})
+        statuses = [mapping[kw] for kw in keywords if kw in mapping]
+        # Text keywords: drop any token that is a status for *any* entity
+        text_kws = [kw for kw in keywords if kw not in _ALL_STATUS_TOKENS]
+        return statuses, text_kws
+
     results: list[QueryResult] = []
     ui_actions: list[dict] = []
 
@@ -156,22 +200,31 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
 
     # Query based on detected intent
 
-    # Meetings query - search logs with type=meeting AND activities with "meeting" in title
+    # Meetings query - search logs tagged "Meeting" AND activities with "meeting" in title
     if 'meeting' in entity_types or (not entity_types and 'meeting' in question):
-        # 1. Search logs with log_type='meeting'
-        log_query = db.query(Log).filter(Log.log_type == 'meeting', Log.is_archived == False)
-        if start_date and end_date:
-            log_query = log_query.filter(Log.created_at >= start_date, Log.created_at < end_date)
+        # 1. Search logs tagged with "Meeting"
+        meeting_tag = db.query(Tag).filter(Tag.name == 'Meeting', Tag.entity_id.is_(None)).first()
+        if meeting_tag:
+            meeting_log_ids = [
+                et.target_id for et in db.query(EntityTag).filter(
+                    EntityTag.tag_id == meeting_tag.id,
+                    EntityTag.target_type == 'log'
+                ).all()
+            ]
+            if meeting_log_ids:
+                log_query = db.query(Log).filter(Log.id.in_(meeting_log_ids), Log.is_archived == False)
+                if start_date and end_date:
+                    log_query = log_query.filter(Log.created_at >= start_date, Log.created_at < end_date)
 
-        meetings_logs = log_query.order_by(Log.created_at.desc()).limit(20).all()
-        for m in meetings_logs:
-            results.append(QueryResult(
-                entity_type='log',
-                id=m.id,
-                title=f"[Log] {m.title}",
-                subtitle=m.content[:100] if m.content else None,
-                date=m.created_at.isoformat() if m.created_at else None
-            ))
+                meetings_logs = log_query.order_by(Log.created_at.desc()).limit(20).all()
+                for m in meetings_logs:
+                    results.append(QueryResult(
+                        entity_type='log',
+                        id=m.id,
+                        title=f"[Log] {m.title}",
+                        subtitle=m.content[:100] if m.content else None,
+                        date=m.created_at.isoformat() if m.created_at else None
+                    ))
 
         # 2. Search activities with "meeting" in title or description
         activity_query = db.query(Activity).filter(
@@ -279,7 +332,7 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
             results.append(QueryResult(
                 entity_type='log',
                 id=log.id,
-                title=f"[{log.log_type}] {log.title}",
+                title=f"[Log] {log.title}",
                 subtitle=log.content[:100] if log.content else None,
                 date=log.created_at.isoformat() if log.created_at else None
             ))
@@ -327,11 +380,15 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
         query = db.query(Activity).filter(Activity.is_archived == False)
         if start_date and end_date:
             query = query.filter(Activity.created_at >= start_date, Activity.created_at < end_date)
-        if keywords:
+
+        status_kws, text_kws = _split_status_keywords('activity')
+        if status_kws:
+            query = query.filter(Activity.status.in_(status_kws))
+        if text_kws:
             keyword_filters = [or_(
                 Activity.title.ilike(f'%{kw}%'),
                 Activity.description.ilike(f'%{kw}%')
-            ) for kw in keywords]
+            ) for kw in text_kws]
             query = query.filter(or_(*keyword_filters))
 
         activities = query.order_by(Activity.created_at.desc()).limit(20).all()
@@ -355,11 +412,15 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
     # Projects query
     if 'project' in entity_types:
         query = db.query(Project).filter(Project.is_archived == False)
-        if keywords:
+
+        status_kws, text_kws = _split_status_keywords('project')
+        if status_kws:
+            query = query.filter(Project.status.in_(status_kws))
+        if text_kws:
             keyword_filters = [or_(
                 Project.title.ilike(f'%{kw}%'),
                 Project.description.ilike(f'%{kw}%')
-            ) for kw in keywords]
+            ) for kw in text_kws]
             query = query.filter(or_(*keyword_filters))
 
         projects = query.order_by(Project.created_at.desc()).limit(20).all()
@@ -394,7 +455,7 @@ async def natural_language_query(request: NLQueryRequest, db: Session = Depends(
                 results.append(QueryResult(
                     entity_type='log',
                     id=log.id,
-                    title=f"[{log.log_type}] {log.title}",
+                    title=f"[Log] {log.title}",
                     subtitle=log.content[:100] if log.content else None,
                     date=log.created_at.isoformat() if log.created_at else None
                 ))

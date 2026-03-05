@@ -15,6 +15,7 @@ class Source(Base):
     content_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="to_read", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

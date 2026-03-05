@@ -8,7 +8,6 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
-	import { readingLists } from '$lib/stores/readingLists';
 	import { entityTagsVersion } from '$lib/stores/tags';
 	import { triggerEntityTagsRefresh } from '$lib/stores/tags';
 	import { updateTriple, deleteTriple, createTriple } from '$lib/api/knowledge';
@@ -17,6 +16,7 @@
 	import ConfirmDialog from '../shared/ConfirmDialog.svelte';
 	import { onMount } from 'svelte';
 	import { structuralPredicates, loadPredicates, semanticRelations, customPredicates } from '$lib/stores/predicates';
+	import EntityIcon from '../shared/EntityIcon.svelte';
 
 	const ENTITY_COLORS: Record<string, string> = {
 		project: '#5c7a99',
@@ -25,7 +25,6 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0'
 	};
 
 	interface UnifiedLink {
@@ -55,7 +54,6 @@
 			case 'activity': return $activities.find(e => e.id === id)?.title ?? `Activity #${id}`;
 			case 'source': return $sources.find(e => e.id === id)?.title ?? `Source #${id}`;
 			case 'actor': return $actors.find(e => e.id === id)?.full_name ?? `Actor #${id}`;
-			case 'reading_list': return $readingLists.find(e => e.id === id)?.title ?? `ReadingList #${id}`;
 			default: return `${type} #${id}`;
 		}
 	}
@@ -329,7 +327,7 @@
 		<p class="empty">Click on any entity in a panel to see its links.</p>
 	{:else}
 		<div class="selected-header">
-			<span class="selected-dot" style:background={ENTITY_COLORS[$selectedEntity.type] ?? '#888'}></span>
+			<EntityIcon type={$selectedEntity.type} size={12} />
 			<span class="selected-type">{formatType($selectedEntity.type)}</span>
 			<span class="selected-title">{$selectedEntity.title}</span>
 			<button class="btn-clear" onclick={clearSelectedEntity} title="Clear selection">&times;</button>
@@ -349,7 +347,7 @@
 					>
 						{link.direction === 'outgoing' ? '→' : '←'}
 					</button>
-					<span class="link-dot" style:background={ENTITY_COLORS[link.otherType] ?? '#888'}></span>
+					<EntityIcon type={link.otherType} size={11} />
 					<span class="link-type">{formatType(link.otherType)}</span>
 					<span class="link-title">{link.otherTitle}</span>
 					{#if link.hasTag}

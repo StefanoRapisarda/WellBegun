@@ -9,16 +9,18 @@
 	import { activities } from '$lib/stores/activities';
 	import { sources } from '$lib/stores/sources';
 	import { actors } from '$lib/stores/actors';
-	import { readingLists } from '$lib/stores/readingLists';
 	import { plans } from '$lib/stores/plans';
+	import { collections } from '$lib/stores/collections';
 	import { loadProjects } from '$lib/stores/projects';
 	import { loadLogs } from '$lib/stores/logs';
 	import { loadNotes } from '$lib/stores/notes';
 	import { loadActivities } from '$lib/stores/activities';
 	import { loadSources } from '$lib/stores/sources';
 	import { loadActors } from '$lib/stores/actors';
-	import { loadReadingLists } from '$lib/stores/readingLists';
 	import { loadPlans } from '$lib/stores/plans';
+	import { loadCollections } from '$lib/stores/collections';
+	import { updateItem, updateCollection, createCollection, addItem } from '$lib/api/collections';
+	import { categories } from '$lib/stores/categories';
 	import {
 		upsertBoardNode,
 		updateBoardNode,
@@ -26,7 +28,8 @@
 		updateTriple,
 		swapTripleDirection,
 		deleteTriple,
-		populateAll
+		populateAll,
+		getTriplesForEntity
 	} from '$lib/api/knowledge';
 	import { createProject, archiveProject, unarchiveProject, deleteProject, activateProject, deactivateProject } from '$lib/api/projects';
 	import { createLog, archiveLog, unarchiveLog, deleteLog, activateLog, deactivateLog } from '$lib/api/logs';
@@ -34,16 +37,22 @@
 	import { createActivity, archiveActivity, unarchiveActivity, deleteActivity, activateActivity, deactivateActivity } from '$lib/api/activities';
 	import { createSource, archiveSource, unarchiveSource, deleteSource, activateSource, deactivateSource } from '$lib/api/sources';
 	import { createActor, archiveActor, unarchiveActor, deleteActor, activateActor, deactivateActor } from '$lib/api/actors';
-	import { createReadingList, deleteReadingList, activateReadingList, deactivateReadingList } from '$lib/api/readingLists';
 	import { createPlan, deletePlan, activatePlan, deactivatePlan, archivePlan } from '$lib/api/plans';
 	import { attachTag, detachTag, getEntityTags, getAllEntityTagsBulk } from '$lib/api/tags';
 	import { tags, loadTags, triggerEntityTagsRefresh, entityTagsVersion } from '$lib/stores/tags';
-	import { activeEntityTagIds, isActiveRelated, showArchived, showActiveRelated, dateFilter, selectedFilterTags, isDateVisible, isTagVisible } from '$lib/stores/dateFilter';
+	import { activeEntityTagIds, isActiveRelated, showArchived, showActiveRelated, dateFilter, selectedFilterTags, isDateVisible, isTagVisible, isEntitySourceOfFilterTag } from '$lib/stores/dateFilter';
 	import { activeTab } from '$lib/stores/activeTab';
+	import { panelSelection, type EntityType as PanelEntityType } from '$lib/stores/panelSelection';
+	import { panels, togglePanel } from '$lib/stores/panels';
 	import type { Tag } from '$lib/types';
 	import GraphCard from './GraphCard.svelte';
+	import CollectionContainer from './CollectionContainer.svelte';
+	import {
+		containerWidth as ccWidth, containerHeight as ccHeight
+	} from './collectionLayout';
 	import GraphConnections from './GraphConnections.svelte';
 	import GraphToolbar from './GraphToolbar.svelte';
+	import GraphEditorPanel from './GraphEditorPanel.svelte';
 	import QueryPanel from '$lib/components/shared/QueryPanel.svelte';
 	import type { SearchResult } from '$lib/api/search';
 	import Modal from '$lib/components/shared/Modal.svelte';
@@ -53,13 +62,15 @@
 	import ActivityForm from '$lib/components/forms/ActivityForm.svelte';
 	import SourceForm from '$lib/components/forms/SourceForm.svelte';
 	import ActorForm from '$lib/components/forms/ActorForm.svelte';
-	import ReadingListForm from '$lib/components/forms/ReadingListForm.svelte';
 	import PlanForm from '$lib/components/forms/PlanForm.svelte';
 	import TagInput from '$lib/components/shared/TagInput.svelte';
 	import TagBadge from '$lib/components/shared/TagBadge.svelte';
 	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
 	import { bulkUpsertBoardNodes } from '$lib/api/knowledge';
 	import { structuralPredicates, loadPredicates, getStructuralPredicate } from '$lib/stores/predicates';
+	import { graphInitialSelection } from '$lib/stores/graphInitialSelection';
+	import { get } from 'svelte/store';
+	import { captureGraphScreenshot } from '$lib/utils/graphScreenshot';
 
 	// Color map matching panels store
 	const ENTITY_COLORS: Record<string, string> = {
@@ -69,8 +80,8 @@
 		activity: '#b5838d',
 		source: '#c9a227',
 		actor: '#8b4557',
-		reading_list: '#5f9ea0',
-		plan: '#6b8ba3'
+		plan: '#6b8ba3',
+		collection: '#7c6f9e'
 	};
 
 	// ── Canvas state ──
@@ -79,6 +90,9 @@
 	let zoom = $state(1);
 	let canvasEl: HTMLDivElement | undefined = $state();
 	let viewportEl: HTMLDivElement | undefined = $state();
+
+	// ── Graph editor panel state ──
+	let graphEditorOpen = $state(false);
 
 	// ── Drag state ──
 	const DRAG_THRESHOLD = 5;
@@ -90,6 +104,10 @@
 	// ── Connect state (drag-to-connect) ──
 	let dropTarget: { type: string; id: number } | null = $state(null);
 	let draggingKey: string | null = $state(null);
+
+	// ── Z-index management (bring-to-front on interact) ──
+	let topZKey: string | null = $state(null);
+	let zCounter = $state(1);
 
 	// ── Multi-selection state ──
 	let selectedCards = $state<Set<string>>(new Set());
@@ -107,6 +125,7 @@
 	let bulkTags = $state<Tag[]>([]);
 
 	// ── Rectangle (marquee) selection state ──
+	let selectMode = $state(false);
 	let selectionRect: { startX: number; startY: number; currentX: number; currentY: number } | null = $state(null);
 
 	// ── Group drag state ──
@@ -276,7 +295,7 @@
 			{
 				const key = `${n.entity_type}:${n.entity_id}`;
 				const nodeTags = nodeEntityTags[key] || [];
-				if (!isTagVisible(nodeTags, $selectedFilterTags)) return false;
+				if (!isTagVisible(nodeTags, $selectedFilterTags) && !isEntitySourceOfFilterTag(n.entity_type, n.entity_id, $selectedFilterTags)) return false;
 			}
 			// When query panel has active filters, only show matching board nodes
 			if (filterPanelOpen && queryHasActiveFilters) {
@@ -289,11 +308,109 @@
 
 	let visibleNodeKeys = $derived(new Set(visibleNodes.map(n => `${n.entity_type}:${n.entity_id}`)));
 
+	// Build collection containers: collection nodes with their member entities
+	let collectionContainerMap = $derived.by(() => {
+		const map = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
+		for (const node of visibleNodes) {
+			if (node.entity_type !== 'collection') continue;
+			const coll = $collections.find(c => c.id === node.entity_id);
+			if (!coll) continue;
+			const members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> = [];
+			for (const item of (coll.items || [])) {
+				const data = getEntityData(item.member_entity_type, item.member_entity_id);
+				if (data) {
+					members.push({
+						entityType: item.member_entity_type,
+						entityId: item.member_entity_id,
+						title: getEntityTitle(item.member_entity_type, item.member_entity_id),
+						status: item.status ?? data.status,
+						itemId: item.id,
+					});
+				}
+			}
+			if (members.length > 0) {
+				map.set(`collection:${coll.id}`, { collectionId: coll.id, members });
+			}
+		}
+		return map;
+	});
+
+	function getStatusCycle(collectionId: number): string[] {
+		const coll = $collections.find(c => c.id === collectionId);
+		if (!coll) return ['todo', 'in_progress', 'done'];
+		const cat = $categories.find(c => c.id === coll.category_id);
+		if (cat && cat.statuses.length > 0) {
+			return [...cat.statuses].sort((a, b) => a.position - b.position).map(s => s.value);
+		}
+		return ['todo', 'in_progress', 'done'];
+	}
+
+	async function handleStatusChange(itemId: number, newStatus: string) {
+		await updateItem(itemId, { status: newStatus });
+		await loadCollections();
+	}
+
+	// Keys of entities rendered inside containers (not standalone)
+	// Exclude the currently-dragged member so it pops out as a standalone card during drag
+	let containedMemberKeys = $derived.by(() => {
+		const s = new Set<string>();
+		for (const [, entry] of collectionContainerMap) {
+			for (const m of entry.members) {
+				const mk = `${m.entityType}:${m.entityId}`;
+				if (mk === draggingKey && !groupDragOrigPositions) continue; // dragging member solo
+				s.add(mk);
+			}
+		}
+		return s;
+	});
+
+	// Filtered containers for rendering — excludes dragged member from its container
+	let renderContainers = $derived.by(() => {
+		if (!draggingKey || groupDragOrigPositions) return collectionContainerMap;
+		const filtered = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
+		for (const [k, entry] of collectionContainerMap) {
+			const filteredMembers = entry.members.filter(m => `${m.entityType}:${m.entityId}` !== draggingKey);
+			filtered.set(k, { ...entry, members: filteredMembers });
+		}
+		return filtered;
+	});
+
+	// Split visible nodes into containers (collections with members) and standalone
+	let containerCollectionKeys = $derived(new Set(collectionContainerMap.keys()));
+	let containerNodes = $derived(visibleNodes.filter(n => containerCollectionKeys.has(`${n.entity_type}:${n.entity_id}`)));
+	let standaloneNodes = $derived(
+		visibleNodes.filter(n => {
+			const key = `${n.entity_type}:${n.entity_id}`;
+			return !containedMemberKeys.has(key) && !containerCollectionKeys.has(key);
+		})
+	);
+
+	// Augmented node map that includes container dimensions for collections
+	let augmentedNodeMap = $derived.by(() => {
+		const map = new Map<string, BoardNode>();
+		for (const node of $boardNodes) {
+			map.set(`${node.entity_type}:${node.entity_id}`, node);
+		}
+		for (const [collKey, entry] of collectionContainerMap) {
+			const existing = map.get(collKey);
+			if (existing) {
+				map.set(collKey, { ...existing, w: ccWidth(), h: ccHeight(entry.members.length, existing.collapsed) });
+			}
+		}
+		return map;
+	});
+
 	let visibleTriples = $derived(
-		$triples.filter(t =>
-			visibleNodeKeys.has(`${t.subject_type}:${t.subject_id}`) &&
-			visibleNodeKeys.has(`${t.object_type}:${t.object_id}`)
-		)
+		$triples.filter(t => {
+			if (!visibleNodeKeys.has(`${t.subject_type}:${t.subject_id}`)) return false;
+			if (!visibleNodeKeys.has(`${t.object_type}:${t.object_id}`)) return false;
+			// Hide collection→member structural triples when collection is rendered as container
+			const sk = `${t.subject_type}:${t.subject_id}`;
+			const ok = `${t.object_type}:${t.object_id}`;
+			if (containerCollectionKeys.has(sk) && containedMemberKeys.has(ok)) return false;
+			if (containerCollectionKeys.has(ok) && containedMemberKeys.has(sk)) return false;
+			return true;
+		})
 	);
 
 	// ── Edit modal state ──
@@ -309,38 +426,13 @@
 		return map;
 	});
 
+	// Only explicitly collapsed nodes suppress their own connections
 	let collapsedNodes = $derived.by(() => {
-		// Start with explicitly collapsed nodes
 		const explicit = new Set<string>();
 		for (const node of $boardNodes) {
 			if (node.collapsed) explicit.add(`${node.entity_type}:${node.entity_id}`);
 		}
-		if (explicit.size === 0) return explicit;
-
-		// Build adjacency: subject → [object keys] from triples
-		const children = new Map<string, string[]>();
-		for (const t of $triples) {
-			const subKey = `${t.subject_type}:${t.subject_id}`;
-			const objKey = `${t.object_type}:${t.object_id}`;
-			if (!children.has(subKey)) children.set(subKey, []);
-			children.get(subKey)!.push(objKey);
-		}
-
-		// BFS to find all descendants of explicitly collapsed nodes
-		const result = new Set(explicit);
-		const queue = [...explicit];
-		while (queue.length > 0) {
-			const key = queue.shift()!;
-			const kids = children.get(key);
-			if (!kids) continue;
-			for (const child of kids) {
-				if (!result.has(child)) {
-					result.add(child);
-					queue.push(child);
-				}
-			}
-		}
-		return result;
+		return explicit;
 	});
 
 	// Nodes hidden because they are descendants of a collapsed node
@@ -369,6 +461,8 @@
 			if (!kids) continue;
 			for (const child of kids) {
 				if (!descendants.has(child)) {
+					// Never hide explicit board nodes; they were placed by the user
+					if (boardEntityKeySet.has(child)) continue;
 					descendants.add(child);
 					queue.push(child);
 				}
@@ -386,8 +480,8 @@
 			case 'activity': return $activities.find(e => e.id === id)?.title ?? `Activity #${id}`;
 			case 'source': return $sources.find(e => e.id === id)?.title ?? `Source #${id}`;
 			case 'actor': return $actors.find(e => e.id === id)?.full_name ?? `Actor #${id}`;
-			case 'reading_list': return $readingLists.find(e => e.id === id)?.title ?? `ReadingList #${id}`;
 			case 'plan': return $plans.find(e => e.id === id)?.title ?? `Plan #${id}`;
+			case 'collection': return $collections.find(e => e.id === id)?.title ?? `Collection #${id}`;
 			default: return `${type} #${id}`;
 		}
 	}
@@ -400,8 +494,8 @@
 			case 'activity': return $activities.find(e => e.id === id);
 			case 'source': return $sources.find(e => e.id === id);
 			case 'actor': return $actors.find(e => e.id === id);
-			case 'reading_list': return $readingLists.find(e => e.id === id);
 			case 'plan': return $plans.find(e => e.id === id);
+			case 'collection': return $collections.find(e => e.id === id);
 			default: return null;
 		}
 	}
@@ -414,6 +508,10 @@
 		e.preventDefault();
 
 		const key = `${type}:${id}`;
+
+		// Bring card to front
+		topZKey = key;
+		zCounter++;
 
 		// Cmd+Click (Mac) or Ctrl+Click (non-Mac): toggle selection
 		if (e.metaKey || e.ctrlKey) {
@@ -487,8 +585,28 @@
 					return n;
 				})
 			);
-			// No drop-target detection during group drag
-			dropTarget = null;
+			// Drop target detection for group drag (based on lead card position)
+			const leadX = draggingCard.origX + dx;
+			const leadY = draggingCard.origY + dy;
+			const leadAug = augmentedNodeMap.get(`${draggingCard.type}:${draggingCard.id}`);
+			const leadW = leadAug?.w ?? 150;
+			const leadH = leadAug?.h ?? 60;
+			const centerX = leadX + leadW / 2;
+			const centerY = leadY + leadH / 2;
+			let found: { type: string; id: number } | null = null;
+			for (const node of visibleNodes) {
+				const nk = `${node.entity_type}:${node.entity_id}`;
+				if (selectedCards.has(nk)) continue;
+				const an = augmentedNodeMap.get(nk);
+				const nw = an?.w ?? 150;
+				const nh = an?.h ?? 60;
+				if (centerX >= node.x && centerX <= node.x + nw &&
+					centerY >= node.y && centerY <= node.y + nh) {
+					found = { type: node.entity_type, id: node.entity_id };
+					break;
+				}
+			}
+			dropTarget = found;
 		} else {
 			// Single card drag
 			const newX = draggingCard.origX + dx;
@@ -540,7 +658,78 @@
 		}
 
 		// Actual drag happened
-		if (wasGroupDrag) {
+		if (wasGroupDrag && dropTarget) {
+			// Group drag onto a target
+			const dt = dropTarget;
+			const savedPositions = groupDragOrigPositions!;
+			try {
+				if (dt.type === 'collection') {
+					// Ensure collection accepts any entity type
+					const coll = $collections.find(c => c.id === dt.id);
+					if (coll) {
+						const cat = $categories.find(c => c.id === coll.category_id);
+						if (cat && cat.member_entity_type !== '*') {
+							const wildcard = $categories.find(c => c.member_entity_type === '*');
+							if (wildcard) {
+								await updateCollection(dt.id, { category_id: wildcard.id } as any);
+							}
+						}
+					}
+					// Skip entities already in this collection
+					const existingKeys = new Set(
+						(coll?.items || []).map((i: any) => `${i.member_entity_type}:${i.member_entity_id}`)
+					);
+					for (const selKey of selectedCards) {
+						if (existingKeys.has(selKey)) continue;
+						const [sType, sIdStr] = selKey.split(':');
+						if (sType === 'collection') continue;
+						await addItem(dt.id, { member_entity_type: sType, member_entity_id: Number(sIdStr) });
+					}
+					// Delete board nodes — entities now render inside the collection container
+					for (const selKey of selectedCards) {
+						const [sType, sIdStr] = selKey.split(':');
+						if (sType === 'collection') continue;
+						try { await deleteBoardNode(sType, Number(sIdStr)); } catch {}
+					}
+					await loadCollections();
+					await loadBoard();
+				} else {
+					// Connect all selected: snap back positions, then attach tags
+					boardNodes.update(nodes =>
+						nodes.map(n => {
+							const nk = `${n.entity_type}:${n.entity_id}`;
+							const orig = savedPositions.get(nk);
+							if (orig) return { ...n, x: orig.x, y: orig.y, collapsed: false };
+							if (n.entity_type === dt.type && n.entity_id === dt.id)
+								return { ...n, collapsed: false };
+							return n;
+						})
+					);
+					for (const selKey of selectedCards) {
+						const [sType, sIdStr] = selKey.split(':');
+						const subjectTag = $tags.find(t => t.entity_type === sType && t.entity_id === Number(sIdStr));
+						if (subjectTag) {
+							await attachTag(subjectTag.id, dt.type, dt.id);
+						}
+					}
+					await loadTags();
+					// Save snapped-back positions
+					const nodesToSave: { entity_type: string; entity_id: number; x: number; y: number }[] = [];
+					for (const selKey of selectedCards) {
+						const orig = savedPositions.get(selKey);
+						if (orig) {
+							const [sType, sIdStr] = selKey.split(':');
+							nodesToSave.push({ entity_type: sType, entity_id: Number(sIdStr), x: orig.x, y: orig.y });
+						}
+					}
+					try { await bulkUpsertBoardNodes(nodesToSave); } catch {}
+				}
+				await loadTriples();
+			} catch (err) {
+				console.error('Failed to interact with drop target:', err);
+			}
+			dropTarget = null;
+		} else if (wasGroupDrag) {
 			// Group drag: save all moved positions
 			const nodesToSave: { entity_type: string; entity_id: number; x: number; y: number }[] = [];
 			for (const selKey of selectedCards) {
@@ -555,13 +744,16 @@
 				console.error('Failed to save group positions:', err);
 			}
 		} else if (dropTarget) {
-			// Drag-to-connect: snap card back to original position
+			// Drag-to-connect: snap card back and un-collapse both endpoints
+			const dt = dropTarget;
 			boardNodes.update(nodes =>
-				nodes.map(n =>
-					n.entity_type === type && n.entity_id === id
-						? { ...n, x: origX, y: origY }
-						: n
-				)
+				nodes.map(n => {
+					if (n.entity_type === type && n.entity_id === id)
+						return { ...n, x: origX, y: origY, collapsed: false };
+					if (n.entity_type === dt.type && n.entity_id === dt.id)
+						return { ...n, collapsed: false };
+					return n;
+				})
 			);
 
 			try {
@@ -569,7 +761,7 @@
 					t => t.entity_type === type && t.entity_id === id
 				);
 				if (subjectTag) {
-					await attachTag(subjectTag.id, dropTarget.type, dropTarget.id);
+					await attachTag(subjectTag.id, dt.type, dt.id);
 					await loadTags();
 				}
 			} catch (err) {
@@ -579,6 +771,8 @@
 
 			try {
 				await upsertBoardNode({ entity_type: type, entity_id: id, x: origX, y: origY });
+				await updateBoardNode(type, id, { collapsed: false });
+				await updateBoardNode(dt.type, dt.id, { collapsed: false });
 			} catch {}
 			dropTarget = null;
 		} else {
@@ -641,8 +835,8 @@
 	function handleCanvasPointerDown(e: PointerEvent) {
 		if (e.button !== 0) return;
 
-		// Cmd/Ctrl+drag or Shift+drag on canvas: rectangle selection
-		if (e.metaKey || e.ctrlKey || e.shiftKey) {
+		// selectMode toggle or Cmd/Ctrl+drag or Shift+drag on canvas: rectangle selection
+		if (selectMode || e.metaKey || e.ctrlKey || e.shiftKey) {
 			selectionRect = {
 				startX: e.clientX,
 				startY: e.clientY,
@@ -711,20 +905,50 @@
 		panY = (rect.height - contentH * zoom) / 2 - (minY - padding) * zoom;
 	}
 
+	function handleScreenshot() {
+		if (!canvasEl) return;
+		const rects = visibleNodes.map(n => {
+			const aug = augmentedNodeMap.get(`${n.entity_type}:${n.entity_id}`);
+			return { x: n.x, y: n.y, w: aug?.w ?? 150, h: aug?.h ?? 60 };
+		});
+		captureGraphScreenshot(canvasEl, rects, 'knowledge-graph');
+	}
+
 	// ── Add entity from toolbar ──
 
-	function findNonOverlappingPosition(baseX: number, baseY: number): { x: number; y: number } {
-		const CARD_W = 150;
-		const CARD_H = 60;
+	function findNonOverlappingPosition(
+		baseX: number,
+		baseY: number,
+		newW = 150,
+		newH = 60,
+		extraRects: Array<{ x: number; y: number; w: number; h: number }> = []
+	): { x: number; y: number } {
+		const DEFAULT_W = 150;
+		const DEFAULT_H = 60;
 		const GAP = 20;
 
 		function overlapsAny(x: number, y: number): boolean {
+			// Check existing board nodes using their actual dimensions
 			for (const node of $boardNodes) {
+				const aug = augmentedNodeMap.get(`${node.entity_type}:${node.entity_id}`);
+				const nw = aug?.w ?? DEFAULT_W;
+				const nh = aug?.h ?? DEFAULT_H;
 				if (
-					x < node.x + CARD_W + GAP &&
-					x + CARD_W + GAP > node.x &&
-					y < node.y + CARD_H + GAP &&
-					y + CARD_H + GAP > node.y
+					x < node.x + nw + GAP &&
+					x + newW + GAP > node.x &&
+					y < node.y + nh + GAP &&
+					y + newH + GAP > node.y
+				) {
+					return true;
+				}
+			}
+			// Check against entities placed earlier in the same batch
+			for (const rect of extraRects) {
+				if (
+					x < rect.x + rect.w + GAP &&
+					x + newW + GAP > rect.x &&
+					y < rect.y + rect.h + GAP &&
+					y + newH + GAP > rect.y
 				) {
 					return true;
 				}
@@ -735,8 +959,9 @@
 		if (!overlapsAny(baseX, baseY)) return { x: baseX, y: baseY };
 
 		// Spiral outward to find a free spot
-		for (let ring = 1; ring <= 10; ring++) {
-			const offset = ring * (CARD_W + GAP);
+		const step = Math.max(newW, newH) + GAP;
+		for (let ring = 1; ring <= 20; ring++) {
+			const offset = ring * step;
 			const candidates = [
 				{ x: baseX + offset, y: baseY },
 				{ x: baseX - offset, y: baseY },
@@ -750,7 +975,7 @@
 			}
 		}
 		// Fallback — far right
-		return { x: baseX + 200, y: baseY };
+		return { x: baseX + 500, y: baseY };
 	}
 
 	async function handleAddEntity(entityType: string) {
@@ -766,13 +991,20 @@
 		try {
 			switch (entityType) {
 				case 'project': created = await createProject({ title: `New Project ${now}` }); await loadProjects(); await loadTags(); break;
-				case 'log': created = await createLog({ title: `New Log ${now}`, log_type: 'diary' }); await loadLogs(); await loadTags(); break;
+				case 'log': created = await createLog({ title: `New Log ${now}` }); await loadLogs(); await loadTags(); break;
 				case 'note': created = await createNote({ title: `New Note ${now}` }); await loadNotes(); await loadTags(); break;
 				case 'activity': created = await createActivity({ title: `New Activity ${now}` }); await loadActivities(); await loadTags(); break;
 				case 'source': created = await createSource({ title: `New Source ${now}` }); await loadSources(); await loadTags(); break;
 				case 'actor': created = await createActor({ full_name: `New Actor ${now}` }); await loadActors(); await loadTags(); break;
-				case 'reading_list': created = await createReadingList({ title: `New Reading List ${now}` }); await loadReadingLists(); await loadTags(); break;
 				case 'plan': created = await createPlan({ title: `New Plan ${now}` }); await loadPlans(); await loadTags(); break;
+				case 'collection': {
+					const cats = get(categories);
+					const wildcard = cats.find(c => c.member_entity_type === '*');
+					const catId = wildcard?.id ?? (cats.length > 0 ? cats[0].id : null);
+					if (catId === null) { console.error('No categories available'); return; }
+					created = await createCollection({ title: `New Collection ${now}`, category_id: catId });
+					await loadCollections(); await loadTags(); break;
+				}
 			}
 		} catch (err) {
 			console.error('Failed to create entity:', err);
@@ -787,6 +1019,39 @@
 				console.error('Failed to save board node:', err);
 			}
 		}
+	}
+
+	// ── Graph editor commit handler ──
+
+	async function handleEditorCommit(results: Array<{ entityType: string; entityId: number }>) {
+		const rect = viewportEl?.getBoundingClientRect();
+		const vw = rect?.width ?? 800;
+		const vh = rect?.height ?? 600;
+		let baseX = (-panX + vw / 2) / zoom;
+		let baseY = (-panY + vh / 2) / zoom;
+
+		const DEFAULT_W = 150;
+		const DEFAULT_H = 60;
+		const placedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+		for (const r of results) {
+			// Determine actual dimensions for this entity
+			let w = DEFAULT_W;
+			let h = DEFAULT_H;
+			if (r.entityType === 'collection') {
+				const coll = $collections.find(c => c.id === r.entityId);
+				const memberCount = coll?.items?.length ?? 0;
+				w = ccWidth();
+				h = ccHeight(memberCount, false);
+			}
+
+			const { x, y } = findNonOverlappingPosition(baseX, baseY, w, h, placedRects);
+			await upsertBoardNode({ entity_type: r.entityType, entity_id: r.entityId, x, y });
+			placedRects.push({ x, y, w, h });
+			baseX = x + w + 20;
+		}
+
+		await reloadBoard();
 	}
 
 	// ── Toggle card collapse ──
@@ -848,7 +1113,6 @@
 				case 'activity': await Promise.all([loadActivities(), loadTags()]); break;
 				case 'source': await Promise.all([loadSources(), loadTags()]); break;
 				case 'actor': await Promise.all([loadActors(), loadTags()]); break;
-				case 'reading_list': await Promise.all([loadReadingLists(), loadTags()]); break;
 				case 'plan': await Promise.all([loadPlans(), loadTags()]); break;
 			}
 		}
@@ -902,6 +1166,9 @@
 		contextMenu = null;
 	}
 
+	// ── Pulsing state for graph cards ──
+	let pulsingCards = $state<Set<string>>(new Set());
+
 	// ── Lifecycle ──
 
 	let hasFocus = $derived(isFocusActive($focusSelection));
@@ -910,6 +1177,131 @@
 	let prevShowArchived = $state(false);
 	let savedPositions = $state<Map<string, { x: number; y: number }> | null>(null);
 	let boardLoadedInMount = $state(false);
+	let initialSelectionApplied = $state(false);
+
+	/**
+	 * Hierarchical layout: places root entities at top, then layers of
+	 * related entities below, using triples to determine connectivity.
+	 * Respects a semantic type ordering within each layer.
+	 * Takes explicit sets so it works inside onMount without reactivity.
+	 * If previouslyVisible is provided, only repositions NEW nodes and
+	 * offsets them to the right of existing visible nodes.
+	 */
+	function hierarchicalLayout(rootKeys: Set<string>, wantedKeys: Set<string>, previouslyVisible?: Set<string>) {
+		const CARD_W = 150;
+		const CARD_H = 70;
+		const GAP_X = 40;
+		const GAP_Y = 80;
+
+		// Type priority within a layer (lower = further left)
+		const TYPE_PRIORITY: Record<string, number> = {
+			plan: 0, project: 1, log: 2, activity: 3, note: 4,
+			collection: 5, source: 6, actor: 7,
+		};
+
+		// Get the nodes to layout (filter board nodes by wantedKeys)
+		const currentNodes = get(boardNodes).filter(n => wantedKeys.has(`${n.entity_type}:${n.entity_id}`));
+		const nodeKeySet = new Set(currentNodes.map(n => `${n.entity_type}:${n.entity_id}`));
+
+		// Build adjacency from triples (only within wantedKeys)
+		const adj = new Map<string, Set<string>>();
+		for (const t of get(triples)) {
+			const sk = `${t.subject_type}:${t.subject_id}`;
+			const ok = `${t.object_type}:${t.object_id}`;
+			if (!nodeKeySet.has(sk) || !nodeKeySet.has(ok)) continue;
+			if (!adj.has(sk)) adj.set(sk, new Set());
+			if (!adj.has(ok)) adj.set(ok, new Set());
+			adj.get(sk)!.add(ok);
+			adj.get(ok)!.add(sk);
+		}
+
+		// BFS from roots to assign layers
+		const layerOf = new Map<string, number>();
+		const queue: string[] = [];
+		for (const key of rootKeys) {
+			if (nodeKeySet.has(key)) {
+				layerOf.set(key, 0);
+				queue.push(key);
+			}
+		}
+		let qi = 0;
+		while (qi < queue.length) {
+			const current = queue[qi++];
+			const depth = layerOf.get(current)!;
+			for (const neighbor of adj.get(current) ?? []) {
+				if (!layerOf.has(neighbor)) {
+					layerOf.set(neighbor, depth + 1);
+					queue.push(neighbor);
+				}
+			}
+		}
+		// Any orphan nodes not reached by BFS go to the last layer + 1
+		const maxLayer = Math.max(0, ...layerOf.values());
+		for (const n of currentNodes) {
+			const key = `${n.entity_type}:${n.entity_id}`;
+			if (!layerOf.has(key)) layerOf.set(key, maxLayer + 1);
+		}
+
+		// Group nodes by layer, sort within layer by type priority then id
+		const layers = new Map<number, typeof currentNodes>();
+		for (const n of currentNodes) {
+			const key = `${n.entity_type}:${n.entity_id}`;
+			const layer = layerOf.get(key) ?? maxLayer + 1;
+			if (!layers.has(layer)) layers.set(layer, []);
+			layers.get(layer)!.push(n);
+		}
+		for (const [, nodes] of layers) {
+			nodes.sort((a, b) => {
+				const pa = TYPE_PRIORITY[a.entity_type] ?? 99;
+				const pb = TYPE_PRIORITY[b.entity_type] ?? 99;
+				return pa !== pb ? pa - pb : a.entity_id - b.entity_id;
+			});
+		}
+
+		// Compute X offset: if there are already visible nodes, place new
+		// cluster to the right with a gap
+		let originX = 0;
+		if (previouslyVisible && previouslyVisible.size > 0) {
+			let maxX = 0;
+			for (const n of get(boardNodes)) {
+				const key = `${n.entity_type}:${n.entity_id}`;
+				if (previouslyVisible.has(key)) {
+					maxX = Math.max(maxX, n.x + CARD_W);
+				}
+			}
+			originX = maxX + GAP_X * 3; // generous gap between clusters
+		}
+
+		// Compute positions: each layer is a row, centered horizontally
+		const newPos = new Map<string, { x: number; y: number }>();
+		const sortedLayers = [...layers.keys()].sort((a, b) => a - b);
+		let maxRowWidth = 0;
+		for (const layer of sortedLayers) {
+			const nodes = layers.get(layer)!;
+			maxRowWidth = Math.max(maxRowWidth, nodes.length * (CARD_W + GAP_X) - GAP_X);
+		}
+
+		for (const layer of sortedLayers) {
+			const nodes = layers.get(layer)!;
+			const rowWidth = nodes.length * (CARD_W + GAP_X) - GAP_X;
+			const offsetX = originX + (maxRowWidth - rowWidth) / 2;
+			const y = layer * (CARD_H + GAP_Y);
+			for (let i = 0; i < nodes.length; i++) {
+				const n = nodes[i];
+				newPos.set(`${n.entity_type}:${n.entity_id}`, {
+					x: offsetX + i * (CARD_W + GAP_X),
+					y,
+				});
+			}
+		}
+
+		boardNodes.update(nodes =>
+			nodes.map(n => {
+				const pos = newPos.get(`${n.entity_type}:${n.entity_id}`);
+				return pos ? { ...n, x: pos.x, y: pos.y } : n;
+			})
+		);
+	}
 
 	function compactLayout() {
 		const CARD_W = 150;
@@ -918,7 +1310,7 @@
 		const GAP_Y = 60;
 		const TYPE_ORDER = [
 			'project', 'activity', 'log', 'note',
-			'source', 'actor', 'reading_list', 'plan'
+			'source', 'actor', 'plan', 'collection'
 		];
 
 		const newPos = new Map<string, { x: number; y: number }>();
@@ -977,8 +1369,9 @@
 	});
 
 	// On initial load: compact layout once board + tags are ready and archived is hidden
+	// Skip if hierarchicalLayout was already applied via initial selection
 	$effect(() => {
-		if (boardLoadedInMount && !$showArchived && $boardNodes.length > 0 && Object.keys(nodeEntityTags).length > 0) {
+		if (boardLoadedInMount && !initialSelectionApplied && !$showArchived && $boardNodes.length > 0 && Object.keys(nodeEntityTags).length > 0) {
 			boardLoadedInMount = false;
 			untrack(() => {
 				savedPositions = new Map();
@@ -994,8 +1387,96 @@
 	onMount(() => {
 		loadPredicates();
 		populateAll().then(() => {
-			Promise.allSettled([loadBoard(), loadTriples()]).then(() => {
+			Promise.allSettled([loadBoard(), loadTriples()]).then(async () => {
 				boardLoadedInMount = true;
+				// Apply initial selection passed from Cards (or other tabs)
+				const payload = get(graphInitialSelection);
+				if (payload && payload.entities.length > 0) {
+					// Reload triples (populateAll may have created new FK-based ones)
+					await loadTriples();
+
+					const wantedKeys = new Set(payload.entities.map(e => `${e.type}:${e.id}`));
+
+					// Expand with related entities if requested (BFS, 2 levels deep)
+					if (payload.showRelated) {
+						let frontier = payload.entities.map(e => ({ type: e.type, id: e.id }));
+						const visited = new Set(frontier.map(e => `${e.type}:${e.id}`));
+						for (let depth = 0; depth < 2 && frontier.length > 0; depth++) {
+							const allTriples = await Promise.all(
+								frontier.map(e => getTriplesForEntity(e.type, e.id))
+							);
+							const nextFrontier: { type: string; id: number }[] = [];
+							for (const triples of allTriples) {
+								for (const t of triples) {
+									for (const [etype, eid] of [
+										[t.subject_type, t.subject_id],
+										[t.object_type, t.object_id]
+									] as [string, number][]) {
+										const key = `${etype}:${eid}`;
+										wantedKeys.add(key);
+										if (!visited.has(key)) {
+											visited.add(key);
+											nextFrontier.push({ type: etype, id: eid });
+										}
+									}
+								}
+							}
+							frontier = nextFrontier;
+						}
+					}
+
+					// Additive visibility: unhide wanted keys from the current hidden set.
+					// If no filter is active yet (empty hidden set = show all), start
+					// by hiding everything, then unhide only the wanted keys.
+					const currentHidden = get(hiddenGraphEntities);
+					const allBoardKeys = new Set(get(boardNodes).map(n => `${n.entity_type}:${n.entity_id}`));
+					let newHidden: Set<string>;
+					let previouslyVisible: Set<string> | undefined;
+					if (currentHidden.size === 0) {
+						// First use: hide everything except wanted
+						newHidden = new Set<string>();
+						for (const key of allBoardKeys) {
+							if (!wantedKeys.has(key)) newHidden.add(key);
+						}
+					} else {
+						// Subsequent use: compute what was already visible
+						previouslyVisible = new Set<string>();
+						for (const key of allBoardKeys) {
+							if (!currentHidden.has(key)) previouslyVisible.add(key);
+						}
+						// Keep previous visible, also unhide wanted
+						newHidden = new Set(currentHidden);
+						for (const key of wantedKeys) {
+							newHidden.delete(key);
+						}
+					}
+					hiddenGraphEntities.set(newHidden);
+					selectedCards = new Set(payload.pulsingKeys);
+
+					// Apply pulsing to originally-selected entities
+					if (payload.pulsingKeys.length > 0) {
+						pulsingCards = new Set(payload.pulsingKeys);
+						setTimeout(() => { pulsingCards = new Set(); }, 2500);
+					}
+
+					graphInitialSelection.set(null);
+					initialSelectionApplied = true;
+
+					// Apply hierarchical layout: only reposition new nodes,
+					// offset to the right of existing visible nodes if additive
+					const rootKeys = new Set(payload.entities.map(e => `${e.type}:${e.id}`));
+					hierarchicalLayout(rootKeys, wantedKeys, previouslyVisible);
+					requestAnimationFrame(() => zoomFit());
+				} else if (payload) {
+					// Payload with no entities (e.g. pulsing only)
+					if (payload.pulsingKeys.length > 0) {
+						pulsingCards = new Set(payload.pulsingKeys);
+						selectedCards = new Set(payload.pulsingKeys);
+						setTimeout(() => { pulsingCards = new Set(); }, 2500);
+					}
+					graphInitialSelection.set(null);
+					requestAnimationFrame(() => zoomFit());
+				}
 			});
 		});
 
@@ -1022,7 +1503,7 @@
 
 	// ── Bulk tag operations ──
 
-	const SUPPORTS_ACTIVE = ['project', 'log', 'activity', 'source', 'actor', 'reading_list', 'plan'];
+	const SUPPORTS_ACTIVE = ['project', 'log', 'activity', 'source', 'actor', 'plan'];
 	const SUPPORTS_ARCHIVE = ['project', 'log', 'note', 'activity', 'source', 'actor', 'plan'];
 
 	let hasActivatable = $derived(selectedEntities.some(e => SUPPORTS_ACTIVE.includes(e.type)));
@@ -1075,7 +1556,6 @@
 			case 'activity': return activateActivity(id);
 			case 'source': return activateSource(id);
 			case 'actor': return activateActor(id);
-			case 'reading_list': return activateReadingList(id);
 			case 'plan': return activatePlan(id);
 			default: return Promise.resolve();
 		}
@@ -1088,7 +1568,6 @@
 			case 'activity': return deactivateActivity(id);
 			case 'source': return deactivateSource(id);
 			case 'actor': return deactivateActor(id);
-			case 'reading_list': return deactivateReadingList(id);
 			case 'plan': return deactivatePlan(id);
 			default: return Promise.resolve();
 		}
@@ -1127,7 +1606,6 @@
 			case 'activity': return deleteActivity(id);
 			case 'source': return deleteSource(id);
 			case 'actor': return deleteActor(id);
-			case 'reading_list': return deleteReadingList(id);
 			case 'plan': return deletePlan(id);
 			default: return Promise.resolve();
 		}
@@ -1136,10 +1614,29 @@
 	async function reloadAllStores() {
 		await Promise.all([
 			loadProjects(), loadLogs(), loadNotes(), loadActivities(),
-			loadSources(), loadActors(), loadReadingLists(),
+			loadSources(), loadActors(),
 			loadPlans(), loadTags()
 		]);
 		triggerEntityTagsRefresh();
+	}
+
+	function handleOpenInCards() {
+		// Ensure the relevant entity type panels are visible
+		const entityTypes = new Set(selectedEntities.map(e => e.type));
+		const currentPanels = get(panels);
+		for (const type of entityTypes) {
+			const panel = currentPanels.find(p => p.id === type);
+			if (panel && !panel.visible) {
+				togglePanel(type);
+			}
+		}
+		// Select these entities in the panel selection store
+		panelSelection.setMany(
+			selectedEntities.map(e => ({ type: e.type as PanelEntityType, id: e.id }))
+		);
+		// Switch to Cards tab
+		activeTab.set('input');
+		selectedCards = new Set();
 	}
 
 	async function handleBulkRemove() {
@@ -1222,15 +1719,24 @@
 	<GraphToolbar
 		{zoom}
 		filterOpen={filterPanelOpen}
+		editorOpen={graphEditorOpen}
 		onAddEntity={handleAddEntity}
 		onZoomIn={zoomIn}
 		onZoomOut={zoomOut}
 		onZoomFit={zoomFit}
 		onToggleFilter={toggleFilterPanel}
+		onToggleEditor={() => graphEditorOpen = !graphEditorOpen}
 		onSwitchToCards={() => activeTab.set('input')}
+		onScreenshot={handleScreenshot}
+		selectActive={selectMode}
+		onToggleSelect={() => (selectMode = !selectMode)}
 	/>
 
 	<div class="viewport-wrapper">
+	<GraphEditorPanel
+		open={graphEditorOpen}
+		onCommit={handleEditorCommit}
+	/>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="viewport"
@@ -1247,14 +1753,44 @@
 		>
 			<GraphConnections
 				triples={visibleTriples}
-				{nodeMap}
+				nodeMap={augmentedNodeMap}
 				{collapsedNodes}
 				onConnectionSwap={handleConnectionSwap}
 				onConnectionDelete={handleConnectionDelete}
 				onPredicateSelect={handlePredicateSelect}
 			/>
 
-			{#each visibleNodes as node (`${node.entity_type}:${node.entity_id}`)}
+			{#each containerNodes as node (`${node.entity_type}:${node.entity_id}`)}
+				{@const entry = renderContainers.get(`${node.entity_type}:${node.entity_id}`)}
+				{#if entry}
+					<CollectionContainer
+						collectionId={node.entity_id}
+						title={getEntityTitle(node.entity_type, node.entity_id)}
+						x={node.x}
+						y={node.y}
+						color={ENTITY_COLORS['collection']}
+						collapsed={node.collapsed}
+						archived={getEntityData(node.entity_type, node.entity_id)?.is_archived ?? false}
+						selected={selectedCards.has(`${node.entity_type}:${node.entity_id}`)}
+						pulsing={pulsingCards.has(`${node.entity_type}:${node.entity_id}`)}
+						highlighted={
+							(dropTarget !== null && dropTarget.type === node.entity_type && dropTarget.id === node.entity_id) ||
+							(dropTarget !== null && draggingKey === `${node.entity_type}:${node.entity_id}`)
+						}
+						members={entry.members}
+						statusCycle={getStatusCycle(node.entity_id)}
+						onPointerDown={(e) => handleCardPointerDown(node.entity_type, node.entity_id, e)}
+						onDblClick={() => handleCardDblClick(node.entity_type, node.entity_id)}
+						onMemberDblClick={(type, id) => handleCardDblClick(type, id)}
+						onStatusChange={handleStatusChange}
+						onToggleCollapse={() => handleToggleCollapse(node.entity_type, node.entity_id)}
+						onContextMenu={(e) => handleCardContextMenu(node.entity_type, node.entity_id, e)}
+					/>
+				{/if}
+			{/each}
+
+			{#each standaloneNodes as node (`${node.entity_type}:${node.entity_id}`)}
+				{@const nodeData = getEntityData(node.entity_type, node.entity_id)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div oncontextmenu={(e) => handleCardContextMenu(node.entity_type, node.entity_id, e)}>
 					<GraphCard
@@ -1265,8 +1801,14 @@
 						y={node.y}
 						color={ENTITY_COLORS[node.entity_type] ?? '#888'}
 						collapsed={node.collapsed}
-						archived={getEntityData(node.entity_type, node.entity_id)?.is_archived ?? false}
+						archived={nodeData?.is_archived ?? false}
+						status={nodeData?.status ?? ''}
+						mood={node.entity_type === 'log' ? (nodeData?.mood ?? '') : ''}
+						weather={node.entity_type === 'log' ? (nodeData?.weather ?? '') : ''}
+						dayTheme={node.entity_type === 'log' ? (nodeData?.day_theme ?? '') : ''}
+						zIndex={topZKey === `${node.entity_type}:${node.entity_id}` ? zCounter : 0}
 						selected={selectedCards.has(`${node.entity_type}:${node.entity_id}`)}
+						pulsing={pulsingCards.has(`${node.entity_type}:${node.entity_id}`)}
 						highlighted={
 						(dropTarget !== null && dropTarget.type === node.entity_type && dropTarget.id === node.entity_id) ||
 						(dropTarget !== null && draggingKey === `${node.entity_type}:${node.entity_id}`)
@@ -1302,16 +1844,11 @@
 	<div class="selection-bar" onclick={(e) => e.stopPropagation()}>
 		<span class="selection-count">{selectionCount} selected</span>
 		<div class="selection-divider"></div>
-		<button class="sel-btn sel-btn-tags" onclick={handleBulkTagsClick} disabled={bulkActionInProgress}>Tags</button>
-		{#if hasActivatable}
-			<button class="sel-btn sel-btn-active" onclick={handleBulkActivate} disabled={bulkActionInProgress}>Active</button>
-			<button class="sel-btn sel-btn-inactive" onclick={handleBulkDeactivate} disabled={bulkActionInProgress}>Inactive</button>
-		{/if}
-		{#if hasArchivable}
-			<button class="sel-btn sel-btn-archive" onclick={handleBulkArchive} disabled={bulkActionInProgress}>Archive</button>
-		{/if}
-		<button class="sel-btn sel-btn-delete" onclick={() => (showConfirmDelete = true)} disabled={bulkActionInProgress}>Delete</button>
-		<button class="sel-btn sel-btn-remove" onclick={handleBulkRemove} disabled={bulkActionInProgress}>Remove</button>
+		<button class="sel-btn sel-btn-remove" onclick={handleBulkRemove} disabled={bulkActionInProgress} title="Remove from workspace (keep in database)">Remove</button>
+		<button class="sel-btn sel-btn-delete" onclick={() => (showConfirmDelete = true)} disabled={bulkActionInProgress} title="Permanently delete entities">Delete</button>
+		<div class="selection-divider"></div>
+		<button class="sel-btn sel-btn-tags" onclick={handleBulkTagsClick} disabled={bulkActionInProgress} title="Manage tags">Tags</button>
+		<button class="sel-btn sel-btn-cards" onclick={handleOpenInCards} disabled={bulkActionInProgress} title="Open in Cards panel">Cards</button>
 		<div class="selection-divider"></div>
 		<button class="sel-btn sel-btn-clear" onclick={clearSelection} disabled={bulkActionInProgress}>Clear</button>
 
@@ -1359,6 +1896,7 @@
 	<!-- Query/Filter panel -->
 	<QueryPanel
 		open={filterPanelOpen}
+		onClose={() => graphFilterPanelOpen.set(false)}
 		onResultClick={handleQueryResult}
 		onStateChange={handleQueryStateChange}
 		resultActionLabel="Add to board"
@@ -1382,8 +1920,6 @@
 		<SourceForm editData={editModal.data} onDone={closeEditModal} />
 	{:else if editModal?.type === 'actor'}
 		<ActorForm editData={editModal.data} onDone={closeEditModal} />
-	{:else if editModal?.type === 'reading_list'}
-		<ReadingListForm editData={editModal.data} onDone={closeEditModal} />
 	{:else if editModal?.type === 'plan'}
 		<PlanForm editData={editModal.data} onDone={closeEditModal} />
 	{/if}
@@ -1551,7 +2087,8 @@
 	.sel-btn-inactive { background: #f3f4f6; color: #6b7280; }
 	.sel-btn-archive { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 	.sel-btn-delete { background: #fee2e2; color: #ef4444; border-color: #fecaca; }
-	.sel-btn-remove { background: #fff1f2; color: #dc2626; border-color: #fca5a5; }
+	.sel-btn-remove { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+	.sel-btn-cards { background: #eff6ff; color: #3b82f6; border-color: #bfdbfe; }
 	.sel-btn-clear { background: white; color: #9ca3af; border-color: #e5e7eb; }
 	.selection-tag-row {
 		width: 100%;

@@ -17,6 +17,7 @@
 	import { selectEntity } from '$lib/stores/selectedEntity';
 	import { selectable } from '$lib/actions/selectable';
 
+
 	// Panel-level tag filter state
 	let panelSelectedTagIds = $state<number[]>([]);
 	let panelFilterMode = $state<'or' | 'and'>('or');
@@ -107,8 +108,8 @@
 
 	async function handleCreate(actorId: number) {
 		// Get tags for active projects and activities
-		const activeProjectIds = $projects.filter(p => p.is_active).map(p => p.id);
-		const activeActivityIds = $activities.filter(a => a.is_active).map(a => a.id);
+		const activeProjectIds = $projects.filter(p => p.is_active && !p.is_archived).map(p => p.id);
+		const activeActivityIds = $activities.filter(a => a.is_active && !a.is_archived).map(a => a.id);
 
 		const activeEntityTags = $tags.filter(t =>
 			(t.entity_type === 'project' && t.entity_id && activeProjectIds.includes(t.entity_id)) ||
@@ -244,4 +245,6 @@
 	.empty { text-align: center; color: #9ca3af; font-size: 0.875rem; }
 	.is-archived .item-card { opacity: 0.55; border-style: dashed; }
 	.archived-badge { font-size: 0.55rem; padding: 1px 5px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.3px; font-weight: 600; flex-shrink: 0; }
+	.btn-icon-nav { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border: 1px solid #d1d5db; border-radius: 4px; background: white; cursor: pointer; color: #9ca3af; transition: all 0.15s; }
+	.btn-icon-nav:hover { border-color: #9ca3af; color: #6b7280; background: #f3f4f6; }
 </style>

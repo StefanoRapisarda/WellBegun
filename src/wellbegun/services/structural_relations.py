@@ -10,8 +10,8 @@ ENTITY_TYPES = [
     "log",
     "source",
     "actor",
-    "reading_list",
     "plan",
+    "collection",
 ]
 
 # Meaningful (source_type, target_type) pairs → default predicate verb.
@@ -54,25 +54,36 @@ STRUCTURAL_PREDICATES: dict[tuple[str, str], str] = {
     ("log", "plan"): "reports on",
     # ── source ──
     ("source", "source"): "related to",
-    ("source", "actor"): "authored by",
-    ("source", "reading_list"): "appears in",
+    ("source", "actor"): "mentioned by",
     # ── actor ──
     ("actor", "project"): "contributes to",
     ("actor", "activity"): "performs",
     ("actor", "note"): "creates",
     ("actor", "log"): "creates",
-    ("actor", "source"): "creates",
+    ("actor", "source"): "mentions",
     ("actor", "actor"): "collaborates with",
-    ("actor", "reading_list"): "curates",
     ("actor", "plan"): "owns",
-    # ── reading_list ──
-    ("reading_list", "source"): "contains",
-    ("reading_list", "reading_list"): "related to",
     # ── plan ──
     ("plan", "project"): "targets",
-    ("plan", "activity"): "schedules",
-    ("plan", "actor"): "assigned to",
+    ("plan", "note"): "has note",
     ("plan", "plan"): "related to",
+    ("plan", "collection"): "has collection",
+    # ── collection ──
+    ("collection", "source"): "contains",
+    ("collection", "activity"): "contains",
+    ("collection", "note"): "contains",
+    ("collection", "project"): "contains",
+    ("collection", "log"): "contains",
+    ("collection", "actor"): "contains",
+    ("collection", "plan"): "contains",
+    ("collection", "collection"): "related to",
+    ("source", "collection"): "appears in",
+    ("activity", "collection"): "appears in",
+    ("note", "collection"): "appears in",
+    ("project", "collection"): "appears in",
+    ("log", "collection"): "appears in",
+    ("actor", "collection"): "curates",
+    ("plan", "collection"): "appears in",
 }
 
 SEMANTIC_RELATIONS: dict[str, list[dict[str, str]]] = {
@@ -111,6 +122,11 @@ SEMANTIC_RELATIONS: dict[str, list[dict[str, str]]] = {
         {"key": "critiques", "forward": "critiques", "reverse": "critiqued by"},
         {"key": "improves", "forward": "improves", "reverse": "improved by"},
         {"key": "supersedes", "forward": "supersedes", "reverse": "superseded by"},
+    ],
+    "Participation": [
+        {"key": "attends", "forward": "attends", "reverse": "attended by"},
+        {"key": "chairs", "forward": "chairs", "reverse": "chaired by"},
+        {"key": "presents at", "forward": "presents at", "reverse": "presented by"},
     ],
 }
 

@@ -20,7 +20,7 @@
 	let editCategory = $state('');
 	let usageCounts = $state<Record<number, number>>({});
 
-	const SYSTEM_CATEGORIES = ['status', 'activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'plan', 'wild'];
+	const SYSTEM_CATEGORIES = ['status', 'activity', 'note', 'log', 'source', 'actor', 'project', 'plan', 'wild'];
 
 	const CATEGORY_LABELS: Record<string, string> = {
 		status: 'Status',
@@ -31,11 +31,10 @@
 		source: 'Source',
 		actor: 'Actor',
 		project: 'Project',
-		readinglist: 'Reading List',
 		plan: 'Plan'
 	};
 
-	const ENTITY_CATEGORY_ORDER = ['status', 'activity', 'note', 'log', 'source', 'actor', 'project', 'readinglist', 'plan'];
+	const ENTITY_CATEGORY_ORDER = ['status', 'activity', 'note', 'log', 'source', 'actor', 'project', 'plan'];
 	const CUSTOM_CATEGORY_ORDER = ['wild'];
 
 	const CATEGORY_HINTS: Record<string, string> = {

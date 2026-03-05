@@ -3,49 +3,59 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class ReadingListItemCreate(BaseModel):
-    source_id: int
+class CollectionItemCreate(BaseModel):
+    member_entity_type: str
+    member_entity_id: int
     position: int = 0
-    status: str = "unread"
+    status: str | None = None
     notes: str | None = None
+    header: str | None = None
 
 
-class ReadingListItemUpdate(BaseModel):
+class CollectionItemUpdate(BaseModel):
     position: int | None = None
     status: str | None = None
     notes: str | None = None
+    header: str | None = None
 
 
-class ReadingListItemOut(BaseModel):
+class CollectionItemOut(BaseModel):
     id: int
-    reading_list_id: int
-    source_id: int
+    collection_id: int
+    member_entity_type: str
+    member_entity_id: int
     position: int
-    status: str
+    status: str | None = None
     notes: str | None = None
+    header: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class ReadingListCreate(BaseModel):
+class CollectionCreate(BaseModel):
     title: str
+    category_id: int
     description: str | None = None
 
 
-class ReadingListUpdate(BaseModel):
+class CollectionUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    category_id: int | None = None
 
 
-class ReadingListOut(BaseModel):
+class CollectionOut(BaseModel):
     id: int
+    entity_type: str
     title: str
     description: str | None = None
+    category_id: int
     is_active: bool
+    is_archived: bool
     created_at: datetime
     updated_at: datetime
-    items: list[ReadingListItemOut] = []
+    items: list[CollectionItemOut] = []
 
     model_config = {"from_attributes": True}

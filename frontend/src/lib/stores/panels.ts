@@ -18,8 +18,8 @@ const defaultPanels: PanelConfig[] = [
 	{ id: 'source', label: 'Sources', visible: false, color: '#c9a227' },       // mustard ochre
 	{ id: 'actor', label: 'Actors', visible: false, color: '#8b4557' },         // burgundy wine
 	{ id: 'activity', label: 'Activities', visible: true, color: '#b5838d' },   // dusty rose
-	{ id: 'readinglist', label: 'Reading Lists', visible: false, color: '#5f9ea0' },  // dusty teal
 	{ id: 'plan', label: 'Plans', visible: false, color: '#6b8ba3' },                  // steel blue
+	{ id: 'collection', label: 'Collections', visible: false, color: '#7c6f9e' },    // muted purple
 	{ id: 'links', label: 'Links', visible: false, color: '#6b7280' } // neutral gray
 ];
 

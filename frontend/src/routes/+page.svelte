@@ -11,8 +11,8 @@
 	import SourcePanel from '$lib/components/panels/SourcePanel.svelte';
 	import ActorPanel from '$lib/components/panels/ActorPanel.svelte';
 	import ActivityPanel from '$lib/components/panels/ActivityPanel.svelte';
-	import ReadingListPanel from '$lib/components/panels/ReadingListPanel.svelte';
 	import PlanPanel from '$lib/components/panels/PlanPanel.svelte';
+	import CollectionPanel from '$lib/components/panels/CollectionPanel.svelte';
 	import LinksPanel from '$lib/components/panels/LinksPanel.svelte';
 
 	const panelComponents: Record<string, any> = {
@@ -23,8 +23,8 @@
 		source: SourcePanel,
 		actor: ActorPanel,
 		activity: ActivityPanel,
-		readinglist: ReadingListPanel,
 		plan: PlanPanel,
+		collection: CollectionPanel,
 		links: LinksPanel
 	};
 

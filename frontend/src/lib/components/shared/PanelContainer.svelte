@@ -33,11 +33,18 @@
 
 	let showFilter = $state(false);
 	let collapsed = $state(false);
-	let hasFilter = $derived(onTagToggle !== undefined && availableTags.length > 0);
+	let hasFilter = $derived(onTagToggle !== undefined);
 	let isPulsing = $derived($pulsingPanels.has(panelId));
 </script>
 
 <section class="panel" class:panel-grow={grow && !collapsed} class:panel-collapsed={collapsed} class:pulsing={isPulsing} style:--panel-color={color || '#6b7280'} data-panel-id={panelId}>
+	{#if panelId}
+		<button class="btn-slide-close" onclick={() => togglePanel(panelId)} title="Close panel">
+			<svg width="10" height="16" viewBox="0 0 10 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<polyline points="8 2 2 8 8 14"></polyline>
+			</svg>
+		</button>
+	{/if}
 	<header class="panel-header">
 		<div class="header-left">
 			{#if panelId}
@@ -91,6 +98,7 @@
 
 <style>
 	.panel {
+		position: relative;
 		background: color-mix(in srgb, var(--panel-color) 12%, white);
 		border: 1px solid color-mix(in srgb, var(--panel-color) 40%, #e5e7eb);
 		border-radius: 8px;
@@ -99,6 +107,34 @@
 		min-height: 200px;
 		max-height: 70vh;
 		overflow: hidden;
+	}
+	.btn-slide-close {
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 10;
+		width: 16px;
+		height: 48px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid color-mix(in srgb, var(--panel-color) 40%, #e5e7eb);
+		border-right: none;
+		border-radius: 6px 0 0 6px;
+		background: color-mix(in srgb, var(--panel-color) 15%, white);
+		cursor: pointer;
+		color: color-mix(in srgb, var(--panel-color) 60%, #9ca3af);
+		opacity: 0;
+		transition: opacity 0.2s, background 0.15s, color 0.15s;
+		padding: 0;
+	}
+	.panel:hover .btn-slide-close {
+		opacity: 1;
+	}
+	.btn-slide-close:hover {
+		background: color-mix(in srgb, var(--panel-color) 30%, white);
+		color: var(--panel-color);
 	}
 	.panel-grow {
 		flex: 1;

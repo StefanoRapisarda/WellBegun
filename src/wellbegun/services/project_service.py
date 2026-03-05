@@ -96,6 +96,7 @@ def archive(db: Session, project_id: int) -> Project | None:
     if not project:
         return None
     project.is_archived = True
+    project.is_active = False
     db.commit()
     db.refresh(project)
     return project

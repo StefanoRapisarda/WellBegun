@@ -90,6 +90,7 @@ def archive(db: Session, actor_id: int) -> Actor | None:
     if not actor:
         return None
     actor.is_archived = True
+    actor.is_active = False
     db.commit()
     db.refresh(actor)
     return actor

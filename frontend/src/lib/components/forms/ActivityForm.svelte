@@ -12,33 +12,8 @@
 	let title = $state(editData?.title ?? '');
 	let description = $state(editData?.description ?? '');
 	let duration = $state(editData?.duration?.toString() ?? '');
+	let activityDate = $state(editData?.activity_date ? editData.activity_date.slice(0, 10) : '');
 	let selectedTagIds = $state<number[]>([]);
-
-	// Keyword patterns for auto-matching tags
-	const KEYWORD_PATTERNS: Record<string, string[]> = {
-		'Meeting': ['meeting', 'meet', 'sync', 'standup', 'stand-up', '1:1', 'one-on-one', 'call', 'huddle'],
-		'ToDo': ['todo', 'to-do', 'to do'],
-		'InProgress': ['wip', 'working on', 'in progress'],
-		'Done': ['done', 'completed', 'finished'],
-		'Blocked': ['blocked', 'stuck', 'waiting'],
-		'Coding': ['coding', 'code', 'develop', 'programming', 'implement', 'debug', 'fix bug'],
-		'Reading': ['reading', 'read', 'study', 'studying'],
-		'Writing': ['writing', 'write', 'document', 'documentation', 'draft'],
-		'Review': ['review', 'feedback', 'pr review', 'code review'],
-		'Research': ['research', 'investigate', 'explore', 'analysis', 'analyze'],
-	};
-
-	// Derive matched keywords from title
-	let keywordMatches = $derived.by(() => {
-		const lowerTitle = title.toLowerCase();
-		const matches: string[] = [];
-		for (const [tagName, keywords] of Object.entries(KEYWORD_PATTERNS)) {
-			if (keywords.some(kw => lowerTitle.includes(kw))) {
-				matches.push(tagName);
-			}
-		}
-		return matches;
-	});
 
 	async function handleSubmit(e: SubmitEvent) {
 		e.preventDefault();
@@ -46,7 +21,8 @@
 		const data = {
 			title: title.trim(),
 			description: description.trim() || undefined,
-			duration: duration ? parseInt(duration, 10) : undefined
+			duration: duration ? parseInt(duration, 10) : undefined,
+			activity_date: activityDate ? activityDate + 'T00:00:00' : null
 		};
 		let activityId: number;
 		if (editData) {
@@ -72,10 +48,13 @@
 
 <form onsubmit={handleSubmit} class="widget" class:editing={!!editData}>
 	<input type="text" bind:value={title} required placeholder="Activity title..." class="title-input" />
-	<input type="number" bind:value={duration} min="0" placeholder="Duration (minutes)" class="field-input" />
+	<div class="field-row">
+		<input type="number" bind:value={duration} min="0" placeholder="Duration (min)" class="field-input" />
+		<input type="date" bind:value={activityDate} class="field-input" title="Activity date" />
+	</div>
 	<HashtagTextarea bind:value={description} rows={3} autoSize={!!editData} placeholder="Description (optional) — type # to insert tags..." />
 	{#if !editData}
-		<DefaultTagSuggestions category="activity" bind:selectedTagIds {keywordMatches} />
+		<DefaultTagSuggestions category="activity" bind:selectedTagIds {title} />
 	{/if}
 	<div class="button-row">
 		<button type="button" class="btn-cancel" onclick={onDone}>Cancel</button>
@@ -87,6 +66,7 @@
 	.widget { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; margin-bottom: 12px; }
 	.widget.editing { background: #fefce8; border-color: #fde68a; }
 	.title-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.field-row { display: flex; gap: 6px; }
 	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 	.field-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
 	.btn-save { padding: 6px 14px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }

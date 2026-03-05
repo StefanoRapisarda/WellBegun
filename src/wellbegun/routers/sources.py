@@ -30,6 +30,7 @@ def create_source(data: SourceCreate, db: Session = Depends(get_db)):
         author=data.author,
         content_url=data.content_url,
         source_type=data.source_type,
+        status=data.status,
     )
 
 

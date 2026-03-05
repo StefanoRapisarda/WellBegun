@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type Tag, type Note, type Log, type Project, type Activity, type Source, type Actor, type ReadingList, tagCategoryPrefix } from '$lib/types';
+	import { type Tag, type Note, type Log, type Project, type Activity, type Source, type Actor, tagCategoryPrefix } from '$lib/types';
 	import { searchEntities, type SearchResult } from '$lib/api/search';
 	import { getNote } from '$lib/api/notes';
 	import { getLog } from '$lib/api/logs';
@@ -7,14 +7,12 @@
 	import { getActivity } from '$lib/api/activities';
 	import { getSource } from '$lib/api/sources';
 	import { getActor } from '$lib/api/actors';
-	import { getReadingList } from '$lib/api/readingLists';
 	import { loadNotes } from '$lib/stores/notes';
 	import { loadLogs } from '$lib/stores/logs';
 	import { loadProjects } from '$lib/stores/projects';
 	import { loadActivities } from '$lib/stores/activities';
 	import { loadSources } from '$lib/stores/sources';
 	import { loadActors } from '$lib/stores/actors';
-	import { loadReadingLists } from '$lib/stores/readingLists';
 	import { tags, loadTags } from '$lib/stores/tags';
 	import QuickNoteForm from './forms/QuickNoteForm.svelte';
 	import DiaryForm from './forms/DiaryForm.svelte';
@@ -22,7 +20,6 @@
 	import ActivityForm from './forms/ActivityForm.svelte';
 	import SourceForm from './forms/SourceForm.svelte';
 	import ActorForm from './forms/ActorForm.svelte';
-	import ReadingListForm from './forms/ReadingListForm.svelte';
 	import TagBadge from './shared/TagBadge.svelte';
 	import { onMount } from 'svelte';
 
@@ -33,7 +30,6 @@
 		{ value: 'activity', label: 'Activities' },
 		{ value: 'source', label: 'Sources' },
 		{ value: 'actor', label: 'Actors' },
-		{ value: 'reading_list', label: 'Reading Lists' },
 	];
 
 	const TYPE_COLORS: Record<string, string> = {
@@ -43,7 +39,6 @@
 		activity: '#a855f7',
 		source: '#f59e0b',
 		actor: '#ef4444',
-		reading_list: '#06b6d4',
 	};
 
 	let queryText = $state('');
@@ -149,7 +144,6 @@
 			activity: getActivity,
 			source: getSource,
 			actor: getActor,
-			reading_list: getReadingList,
 		};
 
 		const fetcher = fetchers[result.type];
@@ -166,7 +160,6 @@
 		await Promise.all([
 			loadNotes(), loadLogs(), loadProjects(),
 			loadActivities(), loadSources(), loadActors(),
-			loadReadingLists(), loadTags(),
 		]);
 		await doSearch();
 	}
@@ -314,8 +307,6 @@
 								<SourceForm editData={editData} onDone={handleEditDone} />
 							{:else if result.type === 'actor'}
 								<ActorForm editData={editData} onDone={handleEditDone} />
-							{:else if result.type === 'reading_list'}
-								<ReadingListForm editData={editData} onDone={handleEditDone} />
 							{/if}
 						</div>
 					{:else}

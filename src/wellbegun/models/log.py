@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from wellbegun.models.base import Base
@@ -10,7 +10,6 @@ class Log(Base):
     __tablename__ = "logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    log_type: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -32,10 +31,20 @@ class Activity(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     log_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    plan_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("plans.id", ondelete="SET NULL"), nullable=True
+    )
+
+    source_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    header: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="todo", nullable=False)
+    activity_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

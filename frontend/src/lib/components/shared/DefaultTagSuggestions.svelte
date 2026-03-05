@@ -3,16 +3,17 @@
 	import { tagCategoryPrefix } from '$lib/types';
 	import { getTagsByCategory } from '$lib/api/tags';
 	import { searchTagsStore } from '$lib/stores/tags';
+	import { matchTagsToTitle } from '$lib/utils/tagMatcher';
 	import { onMount } from 'svelte';
 
 	let {
 		category,
 		selectedTagIds = $bindable([]),
-		keywordMatches = [],
+		title = '',
 	}: {
 		category: string;
 		selectedTagIds: number[];
-		keywordMatches?: string[];
+		title?: string;
 	} = $props();
 
 	let availableTags = $state<Tag[]>([]);
@@ -35,12 +36,13 @@
 		loading = false;
 	});
 
-	// Compute auto-matched tag IDs from keywords
+	// Compute auto-matched tag IDs from title
 	let autoMatchedIds = $derived.by(() => {
-		if (availableTags.length === 0) return new Set<number>();
+		if (availableTags.length === 0 || !title.trim()) return new Set<number>();
+		const matchedNames = matchTagsToTitle(title, availableTags, category);
 		return new Set(
 			availableTags
-				.filter(t => keywordMatches.some(kw => t.name.toLowerCase() === kw.toLowerCase()))
+				.filter(t => matchedNames.includes(t.name))
 				.map(t => t.id)
 		);
 	});

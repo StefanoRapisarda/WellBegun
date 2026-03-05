@@ -20,6 +20,7 @@ def create(
     author: str | None = None,
     content_url: str | None = None,
     source_type: str | None = None,
+    status: str = "to_read",
 ) -> Source:
     source = Source(
         title=title,
@@ -27,6 +28,7 @@ def create(
         author=author,
         content_url=content_url,
         source_type=source_type,
+        status=status,
     )
     db.add(source)
     db.flush()
@@ -86,6 +88,7 @@ def archive(db: Session, source_id: int) -> Source | None:
     if not source:
         return None
     source.is_archived = True
+    source.is_active = False
     db.commit()
     db.refresh(source)
     return source

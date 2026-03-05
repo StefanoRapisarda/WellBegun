@@ -15,11 +15,10 @@ def get_log_by_id(db: Session, log_id: int) -> Log | None:
 
 def create_log(
     db: Session,
-    log_type: str,
     title: str,
     content: str | None = None,
 ) -> Log:
-    log = Log(log_type=log_type, title=title, content=content)
+    log = Log(title=title, content=content)
     db.add(log)
     db.flush()
     create_entity_tag(db, title, "log", "log", log.id)
@@ -82,6 +81,7 @@ def archive_log(db: Session, log_id: int) -> Log | None:
     if not log:
         return None
     log.is_archived = True
+    log.is_active = False
     db.commit()
     db.refresh(log)
     return log

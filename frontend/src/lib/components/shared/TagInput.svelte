@@ -19,7 +19,6 @@
 
 	// Map targetType to tag category
 	const TARGET_TO_CATEGORY: Record<string, string> = {
-		'reading_list': 'readinglist',
 	};
 
 	let category = $derived(TARGET_TO_CATEGORY[targetType] || targetType);
@@ -49,11 +48,8 @@
 	);
 
 	function toggleDefault(tag: Tag) {
-		if (pendingTags.some(p => p.id === tag.id)) {
-			pendingTags = pendingTags.filter(p => p.id !== tag.id);
-		} else {
-			pendingTags = [...pendingTags, tag];
-		}
+		// Immediately attach — no Enter required for default tag chips
+		onAttach(tag);
 	}
 
 	async function handleInput() {

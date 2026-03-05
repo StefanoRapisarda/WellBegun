@@ -9,6 +9,7 @@ class SourceCreate(BaseModel):
     author: str | None = None
     content_url: str | None = None
     source_type: str | None = None
+    status: str = "to_read"
 
 
 class SourceUpdate(BaseModel):
@@ -17,6 +18,7 @@ class SourceUpdate(BaseModel):
     author: str | None = None
     content_url: str | None = None
     source_type: str | None = None
+    status: str | None = None
 
 
 class SourceOut(BaseModel):
@@ -26,6 +28,7 @@ class SourceOut(BaseModel):
     author: str | None = None
     content_url: str | None = None
     source_type: str | None = None
+    status: str
     is_active: bool
     is_archived: bool
     created_at: datetime

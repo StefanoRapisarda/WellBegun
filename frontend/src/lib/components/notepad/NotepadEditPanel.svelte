@@ -12,7 +12,7 @@
 		onClose
 	}: {
 		entity: ParsedEntity;
-		onSave: (updated: Record<string, string>, items?: Array<{ title: string; is_done: boolean }>) => void;
+		onSave: (updated: Record<string, string>, items?: Array<{ title: string; is_done: boolean; header?: string | null }>) => void;
 		onClose: () => void;
 	} = $props();
 
@@ -30,7 +30,7 @@
 	let mood = $state(f.mood ?? '');
 	let weather = $state(f.weather ?? '');
 	let dayTheme = $state(f.day_theme ?? '');
-	let logType = $state(f.log_type ?? '');
+	// log_type removed — classification is now done via tags
 	let duration = $state(f.duration ?? '');
 	let author = $state(f.author ?? '');
 	let contentUrl = $state(f.content_url ?? '');
@@ -46,22 +46,53 @@
 	let outcome = $state(f.outcome ?? '');
 	let endDate = $state(f.end_date ?? '');
 
-	// Plan items state
-	let plannedItems = $state<string[]>(entity.items?.map(i => i.title) ?? []);
+	// Plan items state — mixed list of headers and items
+	type PlanListEntry = { kind: 'header'; text: string } | { kind: 'item'; text: string };
+
+	function buildPlanEntries(items?: Array<{ title: string; is_done: boolean; header?: string | null }>): PlanListEntry[] {
+		if (!items || items.length === 0) return [];
+		const entries: PlanListEntry[] = [];
+		const ungrouped = items.filter(i => !i.header);
+		for (const item of ungrouped) {
+			entries.push({ kind: 'item', text: item.title });
+		}
+		const headers: string[] = [];
+		for (const item of items) {
+			if (item.header && !headers.includes(item.header)) {
+				headers.push(item.header);
+			}
+		}
+		for (const header of headers) {
+			entries.push({ kind: 'header', text: header });
+			for (const item of items.filter(i => i.header === header)) {
+				entries.push({ kind: 'item', text: item.title });
+			}
+		}
+		return entries;
+	}
+
+	let planEntries = $state<PlanListEntry[]>(buildPlanEntries(entity.items));
 	let newItemText = $state('');
+	let newHeaderText = $state('');
 
 	function addPlanItem() {
 		if (!newItemText.trim()) return;
-		plannedItems = [...plannedItems, newItemText.trim()];
+		planEntries = [...planEntries, { kind: 'item', text: newItemText.trim() }];
 		newItemText = '';
 	}
 
-	function removePlanItem(index: number) {
-		plannedItems = plannedItems.filter((_, i) => i !== index);
+	function addPlanHeader() {
+		if (!newHeaderText.trim()) return;
+		planEntries = [...planEntries, { kind: 'header', text: newHeaderText.trim() }];
+		newHeaderText = '';
 	}
 
-	function updatePlanItemText(index: number, text: string) {
-		plannedItems[index] = text;
+	function removePlanEntry(index: number) {
+		planEntries = planEntries.filter((_, i) => i !== index);
+	}
+
+	function updatePlanEntryText(index: number, text: string) {
+		planEntries[index] = { ...planEntries[index], text };
 	}
 
 	// ── Tag handling via DefaultTagSuggestions ──
@@ -69,12 +100,18 @@
 
 	function getTagCategory(type: NotepadEntityType): string {
 		switch (type) {
-			case 'reading_list': return 'readinglist';
+			case 'collection': return 'collection';
 			default: return type;
 		}
 	}
 
 	let tagCategory = $derived(getTagCategory(entity.type));
+
+	// Whether this entity type has a built-in items section in its form template
+	const BUILT_IN_ITEMS_TYPES: NotepadEntityType[] = ['plan', 'collection'];
+	let showGenericItems = $derived(
+		!BUILT_IN_ITEMS_TYPES.includes(entity.type) && !entity.virtual
+	);
 
 	// ── Emoji pickers (for log) ──
 	const MOODS = ['😊', '😃', '😌', '😐', '😔', '😢', '😤', '😴', '🤔', '😎'];
@@ -84,32 +121,6 @@
 	function toggleEmoji(current: string, emoji: string): string {
 		return current === emoji ? '' : emoji;
 	}
-
-	// ── Activity keyword matching (matches ActivityForm exactly) ──
-	const KEYWORD_PATTERNS: Record<string, string[]> = {
-		'Meeting': ['meeting', 'meet', 'sync', 'standup', 'stand-up', '1:1', 'one-on-one', 'call', 'huddle'],
-		'ToDo': ['todo', 'to-do', 'to do'],
-		'InProgress': ['wip', 'working on', 'in progress'],
-		'Done': ['done', 'completed', 'finished'],
-		'Blocked': ['blocked', 'stuck', 'waiting'],
-		'Coding': ['coding', 'code', 'develop', 'programming', 'implement', 'debug', 'fix bug'],
-		'Reading': ['reading', 'read', 'study', 'studying'],
-		'Writing': ['writing', 'write', 'document', 'documentation', 'draft'],
-		'Review': ['review', 'feedback', 'pr review', 'code review'],
-		'Research': ['research', 'investigate', 'explore', 'analysis', 'analyze'],
-	};
-
-	let keywordMatches = $derived.by(() => {
-		if (entity.type !== 'activity') return [];
-		const lowerTitle = title.toLowerCase();
-		const matches: string[] = [];
-		for (const [tagName, keywords] of Object.entries(KEYWORD_PATTERNS)) {
-			if (keywords.some(kw => lowerTitle.includes(kw))) {
-				matches.push(tagName);
-			}
-		}
-		return matches;
-	});
 
 	// ── Auto-resize for plain textareas ──
 	let descEl: HTMLTextAreaElement | undefined = $state();
@@ -155,7 +166,6 @@
 				if (mood) updated.mood = mood;
 				if (weather) updated.weather = weather;
 				if (dayTheme) updated.day_theme = dayTheme;
-				if (logType.trim()) updated.log_type = logType.trim();
 				break;
 			case 'activity':
 				if (title.trim()) updated.title = title.trim();
@@ -178,7 +188,7 @@
 				if (email.trim()) updated.email = email.trim();
 				if (url.trim()) updated.url = url.trim();
 				break;
-			case 'reading_list':
+			case 'collection':
 				if (title.trim()) updated.title = title.trim();
 				if (description.trim()) updated.description = description.trim();
 				break;
@@ -203,9 +213,21 @@
 			}
 		}
 
-		if (entity.type === 'plan' && plannedItems.length > 0) {
-			const items = plannedItems.filter(t => t.trim()).map(t => ({ title: t.trim(), is_done: false }));
-			onSave(updated, items);
+		if (planEntries.length > 0) {
+			let currentHeader: string | null = null;
+			const items: Array<{ title: string; is_done: boolean; header?: string | null }> = [];
+			for (const entry of planEntries) {
+				if (entry.kind === 'header') {
+					currentHeader = entry.text;
+				} else if (entry.text.trim()) {
+					items.push({ title: entry.text.trim(), is_done: false, header: currentHeader });
+				}
+			}
+			if (items.length > 0) {
+				onSave(updated, items);
+			} else {
+				onSave(updated);
+			}
 		} else {
 			onSave(updated);
 		}
@@ -219,6 +241,60 @@
 	</div>
 {/snippet}
 
+{#snippet genericItemsSection()}
+	{#if showGenericItems}
+		<div class="items-section">
+			<div class="items-label" style:color={config.color}>
+				{entity.type.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} Items
+			</div>
+			{#each planEntries as entry, i (i)}
+				{#if entry.kind === 'header'}
+					<div class="plan-header-row">
+						<span class="plan-header-icon" style:color={config.color}>##</span>
+						<input
+							type="text"
+							class="plan-header-text"
+							value={entry.text}
+							onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+						/>
+						<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+					</div>
+				{:else}
+					<div class="planned-item">
+						<input
+							type="text"
+							class="planned-item-text"
+							value={entry.text}
+							onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+						/>
+						<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+					</div>
+				{/if}
+			{/each}
+			<div class="add-item-row">
+				<input
+					type="text"
+					class="add-item-input"
+					placeholder="New item..."
+					bind:value={newItemText}
+					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlanItem(); } }}
+				/>
+				<button type="button" class="btn-add-item" style:background={config.color} onclick={addPlanItem}>+</button>
+			</div>
+			<div class="add-item-row">
+				<input
+					type="text"
+					class="add-item-input"
+					placeholder="Section header..."
+					bind:value={newHeaderText}
+					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlanHeader(); } }}
+				/>
+				<button type="button" class="btn-add-header" onclick={addPlanHeader}>##</button>
+			</div>
+		</div>
+	{/if}
+{/snippet}
+
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="overlay" onclick={onClose} onkeydown={(e) => e.key === 'Escape' && onClose()} role="dialog" tabindex="-1">
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -228,7 +304,8 @@
 			<form onsubmit={handleSubmit} class="widget note-widget">
 				<input type="text" bind:value={title} placeholder="Note title..." class="title-input" required />
 				<HashtagTextarea bind:value={content} rows={2} autoSize placeholder="Content (optional) — type # to insert tags..." />
-				<DefaultTagSuggestions category="note" bind:selectedTagIds />
+				<DefaultTagSuggestions category="note" bind:selectedTagIds {title} />
+				{@render genericItemsSection()}
 				{@render actionButtons('note-save')}
 			</form>
 
@@ -245,7 +322,8 @@
 					<input type="datetime-local" bind:value={startDate} class="field-input" />
 				</div>
 				<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
-				<DefaultTagSuggestions category="project" bind:selectedTagIds />
+				<DefaultTagSuggestions category="project" bind:selectedTagIds {title} />
+				{@render genericItemsSection()}
 				{@render actionButtons('project-save')}
 			</form>
 
@@ -254,7 +332,7 @@
 				<input type="text" bind:value={title} placeholder="Log title..." class="title-input" required />
 				<input type="text" bind:value={location} placeholder="Location" class="field-input" />
 				<HashtagTextarea bind:value={content} rows={2} autoSize placeholder="Content (optional) — type # to insert tags" />
-				<DefaultTagSuggestions category="log" bind:selectedTagIds />
+				<DefaultTagSuggestions category="log" bind:selectedTagIds {title} />
 				<div class="emoji-row">
 					<span class="emoji-label">Mood</span>
 					{#each MOODS as e}
@@ -273,6 +351,7 @@
 						<button type="button" class="emoji-chip" class:selected={dayTheme === e} onclick={() => dayTheme = toggleEmoji(dayTheme, e)}>{e}</button>
 					{/each}
 				</div>
+				{@render genericItemsSection()}
 				{@render actionButtons('log-save')}
 			</form>
 
@@ -281,7 +360,8 @@
 				<input type="text" bind:value={title} placeholder="Activity title..." class="title-input" required />
 				<input type="number" bind:value={duration} min="0" placeholder="Duration (minutes)" class="field-input" />
 				<HashtagTextarea bind:value={description} rows={3} autoSize placeholder="Description (optional) — type # to insert tags..." />
-				<DefaultTagSuggestions category="activity" bind:selectedTagIds {keywordMatches} />
+				<DefaultTagSuggestions category="activity" bind:selectedTagIds {title} />
+				{@render genericItemsSection()}
 				{@render actionButtons('activity-save')}
 			</form>
 
@@ -292,7 +372,8 @@
 				<input type="text" bind:value={sourceType} placeholder="Type (e.g. book, article, video)" class="field-input" />
 				<input type="url" bind:value={contentUrl} placeholder="URL (https://...)" class="field-input" />
 				<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
-				<DefaultTagSuggestions category="source" bind:selectedTagIds />
+				<DefaultTagSuggestions category="source" bind:selectedTagIds {title} />
+				{@render genericItemsSection()}
 				{@render actionButtons('source-save')}
 			</form>
 
@@ -309,17 +390,11 @@
 					<input type="url" bind:value={url} placeholder="URL (https://...)" class="field-input" />
 				</div>
 				<textarea bind:this={notesEl} bind:value={notes} rows="2" placeholder="Notes (optional)" class="field-textarea"></textarea>
-				<DefaultTagSuggestions category="actor" bind:selectedTagIds />
+				<DefaultTagSuggestions category="actor" bind:selectedTagIds title={fullName} />
+				{@render genericItemsSection()}
 				{@render actionButtons('actor-save')}
 			</form>
 
-		{:else if entity.type === 'reading_list'}
-			<form onsubmit={handleSubmit} class="widget reading-list-widget">
-				<input type="text" bind:value={title} placeholder="Reading list title..." class="title-input" required />
-				<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
-				<DefaultTagSuggestions category="readinglist" bind:selectedTagIds />
-				{@render actionButtons('reading-list-save')}
-			</form>
 
 		{:else if entity.type === 'plan'}
 			<form onsubmit={handleSubmit} class="widget plan-widget">
@@ -333,17 +408,30 @@
 				</div>
 				<div class="items-section">
 					<div class="items-label">Activities</div>
-					{#each plannedItems as item, i (i)}
-						<div class="planned-item">
-							<input type="checkbox" disabled />
-							<input
-								type="text"
-								class="planned-item-text"
-								value={item}
-								onchange={(e) => updatePlanItemText(i, (e.target as HTMLInputElement).value)}
-							/>
-							<button type="button" class="btn-remove-item" onclick={() => removePlanItem(i)}>&minus;</button>
-						</div>
+					{#each planEntries as entry, i (i)}
+						{#if entry.kind === 'header'}
+							<div class="plan-header-row">
+								<span class="plan-header-icon">##</span>
+								<input
+									type="text"
+									class="plan-header-text"
+									value={entry.text}
+									onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+								/>
+								<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+							</div>
+						{:else}
+							<div class="planned-item">
+								<input type="checkbox" disabled />
+								<input
+									type="text"
+									class="planned-item-text"
+									value={entry.text}
+									onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+								/>
+								<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+							</div>
+						{/if}
 					{/each}
 					<div class="add-item-row">
 						<input
@@ -355,9 +443,74 @@
 						/>
 						<button type="button" class="btn-add-item" onclick={addPlanItem}>+</button>
 					</div>
+					<div class="add-item-row">
+						<input
+							type="text"
+							class="add-item-input"
+							placeholder="Section header..."
+							bind:value={newHeaderText}
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlanHeader(); } }}
+						/>
+						<button type="button" class="btn-add-header" onclick={addPlanHeader}>##</button>
+					</div>
 				</div>
-				<DefaultTagSuggestions category="plan" bind:selectedTagIds />
+				<DefaultTagSuggestions category="plan" bind:selectedTagIds {title} />
 				{@render actionButtons('plan-save')}
+			</form>
+
+		{:else if entity.type === 'collection'}
+			<form onsubmit={handleSubmit} class="widget collection-widget">
+				<input type="text" bind:value={title} placeholder="Collection title..." class="title-input" required />
+				<textarea bind:this={descEl} bind:value={description} rows="2" placeholder="Description (optional)" class="field-textarea"></textarea>
+				<div class="items-section">
+					<div class="items-label" style:color="#7c6f9e">Items</div>
+					{#each planEntries as entry, i (i)}
+						{#if entry.kind === 'header'}
+							<div class="plan-header-row">
+								<span class="plan-header-icon" style:color="#7c6f9e">##</span>
+								<input
+									type="text"
+									class="plan-header-text col-header-text"
+									value={entry.text}
+									onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+								/>
+								<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+							</div>
+						{:else}
+							<div class="planned-item">
+								<input
+									type="text"
+									class="planned-item-text"
+									value={entry.text}
+									onchange={(e) => updatePlanEntryText(i, (e.target as HTMLInputElement).value)}
+								/>
+								<button type="button" class="btn-remove-item" onclick={() => removePlanEntry(i)}>&minus;</button>
+							</div>
+						{/if}
+					{/each}
+					<div class="add-item-row">
+						<input
+							type="text"
+							class="add-item-input"
+							placeholder="New item..."
+							bind:value={newItemText}
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlanItem(); } }}
+						/>
+						<button type="button" class="btn-add-item" style:background="#7c6f9e" onclick={addPlanItem}>+</button>
+					</div>
+					<div class="add-item-row">
+						<input
+							type="text"
+							class="add-item-input"
+							placeholder="Section header..."
+							bind:value={newHeaderText}
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPlanHeader(); } }}
+						/>
+						<button type="button" class="btn-add-header col-add-header" onclick={addPlanHeader}>##</button>
+					</div>
+				</div>
+				<DefaultTagSuggestions category="collection" bind:selectedTagIds {title} />
+				{@render actionButtons('collection-save')}
 			</form>
 		{/if}
 	</div>
@@ -419,13 +572,14 @@
 	:global(.actor-save) { background: #ef4444; }
 	:global(.actor-save:hover) { background: #dc2626; }
 
-	.reading-list-widget { background: #ecfeff; border: 1px solid #a5f3fc; }
-	:global(.reading-list-save) { background: #06b6d4; }
-	:global(.reading-list-save:hover) { background: #0891b2; }
 
 	.plan-widget { background: #f0f7fa; border: 1px solid #b3d9e6; }
 	:global(.plan-save) { background: #4a90a4; }
 	:global(.plan-save:hover) { background: #3d7a8c; }
+
+	.collection-widget { background: #f5f3fa; border: 1px solid #d4cfe6; }
+	:global(.collection-save) { background: #7c6f9e; }
+	:global(.collection-save:hover) { background: #685d87; }
 
 	/* Plan-specific styles */
 	.date-row { display: flex; gap: 8px; }
@@ -441,6 +595,19 @@
 	.add-item-row { display: flex; gap: 4px; }
 	.add-item-input { flex: 1; padding: 5px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem; }
 	.btn-add-item { padding: 4px 10px; background: #4a90a4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+
+	/* Section header styles */
+	.plan-header-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+	.plan-header-icon { font-size: 0.7rem; font-weight: 700; color: #4a90a4; font-family: monospace; }
+	.plan-header-text { flex: 1; padding: 4px 6px; border: 1px solid #b3d9e6; border-radius: 4px; font-size: 0.8rem; font-weight: 600; background: #e8f4f8; color: #2c6e7e; }
+	.btn-add-header { padding: 4px 10px; background: #e8f4f8; color: #4a90a4; border: 1px solid #b3d9e6; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 700; font-family: monospace; }
+	.btn-add-header:hover { background: #d1edf5; }
+	.rl-header-text { border-color: #a5f3fc !important; background: #ecfeff !important; color: #4d8486 !important; }
+	.rl-add-header { background: #ecfeff !important; color: #5f9ea0 !important; border-color: #a5f3fc !important; }
+	.rl-add-header:hover { background: #e0f4f4 !important; }
+	.col-header-text { border-color: #d4cfe6 !important; background: #f5f3fa !important; color: #5a4f7a !important; }
+	.col-add-header { background: #f5f3fa !important; color: #7c6f9e !important; border-color: #d4cfe6 !important; }
+	.col-add-header:hover { background: #ebe7f5 !important; }
 
 	/* Emoji picker — matching DiaryForm */
 	.emoji-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

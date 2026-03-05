@@ -24,6 +24,9 @@
 	} = $props();
 
 	let predicateMenuTripleId = $state<number | null>(null);
+	let menuScreenX = $state(0);
+	let menuScreenY = $state(0);
+	let menuTriple = $state<KnowledgeTriple | null>(null);
 
 	function getSuggestedPredicates(triple: KnowledgeTriple): { label: string; group: string }[] {
 		const key1 = `${triple.subject_type}:${triple.object_type}`;
@@ -47,15 +50,35 @@
 
 	function handlePredicateMenuSelect(tripleId: number, predicate: string) {
 		predicateMenuTripleId = null;
+		menuTriple = null;
 		onPredicateSelect?.(tripleId, predicate);
 	}
 
-	function togglePredicateMenu(tripleId: number, e: MouseEvent) {
+	function togglePredicateMenu(tripleId: number, triple: KnowledgeTriple, e: MouseEvent) {
 		e.stopPropagation();
-		predicateMenuTripleId = predicateMenuTripleId === tripleId ? null : tripleId;
+		if (predicateMenuTripleId === tripleId) {
+			predicateMenuTripleId = null;
+			menuTriple = null;
+		} else {
+			predicateMenuTripleId = tripleId;
+			menuTriple = triple;
+			menuScreenX = e.clientX;
+			menuScreenY = e.clientY;
+		}
 	}
 
 	onMount(() => { loadPredicates(); });
+
+	// Portal action: teleports element to document.body so it escapes
+	// the .canvas CSS transform that breaks position:fixed
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			}
+		};
+	}
 
 	function nodeKey(type: string, id: number): string {
 		return `${type}:${id}`;
@@ -95,8 +118,6 @@
 	let connections = $derived.by(() => {
 		const result: ConnectionData[] = [];
 		if (!Array.isArray(triples)) return result;
-		const hw = cardWidth / 2;
-		const hh = cardHeight / 2;
 		for (const triple of triples) {
 			const subjectKey = nodeKey(triple.subject_type, triple.subject_id);
 			const objectKey = nodeKey(triple.object_type, triple.object_id);
@@ -108,14 +129,20 @@
 			const tNode = nodeMap.get(objectKey);
 			if (!sNode || !tNode) continue;
 
-			const sCx = sNode.x + hw;
-			const sCy = sNode.y + hh;
-			const tCx = tNode.x + hw;
-			const tCy = tNode.y + hh;
+			// Per-node dimensions (fall back to uniform cardWidth/cardHeight)
+			const sHw = (sNode.w ?? cardWidth) / 2;
+			const sHh = (sNode.h ?? cardHeight) / 2;
+			const tHw = (tNode.w ?? cardWidth) / 2;
+			const tHh = (tNode.h ?? cardHeight) / 2;
+
+			const sCx = sNode.x + sHw;
+			const sCy = sNode.y + sHh;
+			const tCx = tNode.x + tHw;
+			const tCy = tNode.y + tHh;
 
 			// Clip to card edges
-			const sEdge = clipToEdge(sCx, sCy, tCx, tCy, hw, hh);
-			const tEdge = clipToEdge(tCx, tCy, sCx, sCy, hw, hh);
+			const sEdge = clipToEdge(sCx, sCy, tCx, tCy, sHw, sHh);
+			const tEdge = clipToEdge(tCx, tCy, sCx, sCy, tHw, tHh);
 
 			const sx = sEdge.x;
 			const sy = sEdge.y;
@@ -203,84 +230,83 @@
 			onclick={() => onConnectionSwap(conn.triple.id)}
 		/>
 
-		<!-- Predicate label: double-click to open dropdown -->
+		<!-- Predicate label: click dropdown or double-click to open menu -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<g
+			class="predicate-group"
+			transform="translate({conn.labelX},{conn.labelY})"
+			ondblclick={(e: MouseEvent) => togglePredicateMenu(conn.triple.id, conn.triple, e)}
+		>
+			<rect
+				x={-(conn.triple.predicate.length * 3.5 + 12)}
+				y="-10"
+				width={conn.triple.predicate.length * 7 + 24}
+				height="20"
+				rx="4"
+				fill="white"
+				fill-opacity="0.9"
+				stroke="#e5e7eb"
+				stroke-width="0.5"
+			/>
+			<text
+				text-anchor="middle"
+				dominant-baseline="central"
+				class="predicate-text"
+			>
+				{conn.triple.predicate}
+			</text>
+			<!-- Dropdown button -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<g
-				class="predicate-group"
-				transform="translate({conn.labelX},{conn.labelY})"
-				ondblclick={(e: MouseEvent) => togglePredicateMenu(conn.triple.id, e)}
+			<text
+				x={conn.triple.predicate.length * 3.5 + 6}
+				class="dropdown-btn"
+				text-anchor="middle"
+				dominant-baseline="central"
+				onclick={(e: MouseEvent) => togglePredicateMenu(conn.triple.id, conn.triple, e)}
 			>
-				<rect
-					x={-(conn.triple.predicate.length * 3.5 + 12)}
-					y="-10"
-					width={conn.triple.predicate.length * 7 + 24}
-					height="20"
-					rx="4"
-					fill="white"
-					fill-opacity="0.9"
-					stroke="#e5e7eb"
-					stroke-width="0.5"
-				/>
-				<text
-					text-anchor="middle"
-					dominant-baseline="central"
-					class="predicate-text"
-				>
-					{conn.triple.predicate}
-				</text>
-				<!-- Dropdown button -->
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<text
-					x={conn.triple.predicate.length * 3.5 + 6}
-					class="dropdown-btn"
-					text-anchor="middle"
-					dominant-baseline="central"
-					onclick={(e: MouseEvent) => togglePredicateMenu(conn.triple.id, e)}
-				>
-					&#9662;
-				</text>
-				<!-- Delete button -->
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<text
-					x={conn.triple.predicate.length * 3.5 + 18}
-					class="delete-btn"
-					text-anchor="middle"
-					dominant-baseline="central"
-					onclick={(e: MouseEvent) => { e.stopPropagation(); onConnectionDelete(conn.triple.id); }}
-				>
-					×
-				</text>
-			</g>
-			{#if predicateMenuTripleId === conn.triple.id}
-				{@const preds = getSuggestedPredicates(conn.triple)}
-				{@const groups = [...new Set(preds.map(p => p.group))]}
-				<foreignObject
-					x={conn.labelX - 80}
-					y={conn.labelY + 14}
-					width="160"
-					height="200"
-				>
-					<div class="pred-dropdown" xmlns="http://www.w3.org/1999/xhtml">
-						{#each groups as group}
-							<div class="pred-group-label">{group}</div>
-							{#each preds.filter(p => p.group === group) as pred}
-								<button
-									class="pred-option"
-									class:active={conn.triple.predicate === pred.label}
-									onclick={() => handlePredicateMenuSelect(conn.triple.id, pred.label)}
-								>
-									{pred.label}
-								</button>
-							{/each}
-						{/each}
-					</div>
-				</foreignObject>
-			{/if}
+				&#9662;
+			</text>
+			<!-- Delete button -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<text
+				x={conn.triple.predicate.length * 3.5 + 18}
+				class="delete-btn"
+				text-anchor="middle"
+				dominant-baseline="central"
+				onclick={(e: MouseEvent) => { e.stopPropagation(); onConnectionDelete(conn.triple.id); }}
+			>
+				×
+			</text>
+		</g>
 	{/each}
 </svg>
+
+{#if predicateMenuTripleId !== null && menuTriple}
+	{@const preds = getSuggestedPredicates(menuTriple)}
+	{@const groups = [...new Set(preds.map(p => p.group))]}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div use:portal>
+		<div class="pred-backdrop" onclick={() => { predicateMenuTripleId = null; menuTriple = null; }}></div>
+		<div class="pred-dropdown-portal" style="top: {menuScreenY}px; left: {menuScreenX}px;">
+			{#each groups as group}
+				<div class="pred-group-label">{group}</div>
+				{#each preds.filter(p => p.group === group) as pred}
+					<button
+						class="pred-option"
+						class:active={menuTriple.predicate === pred.label}
+						onclick={() => handlePredicateMenuSelect(predicateMenuTripleId!, pred.label)}
+					>
+						{pred.label}
+					</button>
+				{/each}
+			{/each}
+		</div>
+	</div>
+{/if}
 
 <style>
 	.line-hit-area {
@@ -317,18 +343,29 @@
 	.dropdown-btn:hover {
 		fill: #3b82f6;
 	}
-	.pred-dropdown {
+	.pred-backdrop {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 9999;
+	}
+	.pred-dropdown-portal {
+		position: fixed;
+		transform: translate(-50%, -50%);
 		background: white;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-		padding: 4px;
-		max-height: 196px;
+		border: 1px solid #d1d5db;
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+		padding: 6px;
+		max-height: 240px;
+		width: 170px;
 		overflow-y: auto;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 2px;
-		pointer-events: all;
+		z-index: 10000;
 	}
 	.pred-group-label {
 		width: 100%;
