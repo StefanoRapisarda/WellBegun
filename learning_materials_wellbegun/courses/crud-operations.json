@@ -1,0 +1,261 @@
+{
+  "id": "course_002",
+  "slug": "crud-operations",
+  "title": "CRUD Operations",
+  "technology": "HTTP/SQL/FastAPI",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "heard",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "CRUD stands for **Create, Read, Update, Delete** -- the four fundamental operations you can perform on any piece of stored data. If you have ever inserted a row into a pandas DataFrame, queried it, changed a value, and dropped it, you have performed CRUD operations.\n\nIn WellBegun, every entity type (Note, Project, Source, Actor, Activity, Plan, Collection, Log) supports the same four operations. The pattern repeats so consistently that once you understand CRUD for Notes, you understand it for all eight entity types.\n\nCRUD is universal because it maps directly to HTTP methods (POST, GET, PUT, DELETE) and SQL statements (INSERT, SELECT, UPDATE, DELETE).",
+      "metadata": {
+        "key_takeaways": [
+          "CRUD is the universal pattern for data manipulation in any application",
+          "Each operation maps to an HTTP method and a SQL statement",
+          "WellBegun implements CRUD identically for every entity type through a router -> service -> model architecture",
+          "Understanding the Notes CRUD gives you the template for every other entity"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### The Four Operations\n\n| CRUD | HTTP Method | SQL Statement | What it does |\n|------|------------|---------------|-------------|\n| **C**reate | POST | INSERT | Add a new record |\n| **R**ead | GET | SELECT | Retrieve one or many records |\n| **U**pdate | PUT | UPDATE | Modify an existing record |\n| **D**elete | DELETE | DELETE | Remove a record |\n\n### How WellBegun Layers CRUD\n\nEach CRUD operation flows through three layers:\n\n1. **Router** -- defines HTTP endpoints, validates input, returns HTTP responses\n2. **Service** -- contains business logic, interacts with the database\n3. **Model** -- defines the database table structure\n\nThis separation means the router never touches the database directly, and the service never deals with HTTP status codes.\n\n### Create = POST = INSERT\n\nCreating a note sends JSON, validates it, creates a database row, and returns the new record.\n\n### Read = GET = SELECT\n\nReading comes in two flavors: list all (`GET /`) or get one by ID (`GET /{id}`).\n\n### Update = PUT = UPDATE\n\nUpdating accepts partial data via `model_dump(exclude_unset=True)` and applies only the fields sent.\n\n### Delete = DELETE = DELETE\n\nDeleting removes the record and cleans up related entity tags and knowledge graph references.",
+      "metadata": {
+        "key_takeaways": [
+          "Create=POST=INSERT, Read=GET=SELECT, Update=PUT=UPDATE, Delete=DELETE=DELETE",
+          "CRUD flows through three layers: Router (HTTP) -> Service (logic) -> Model (database)",
+          "Read has two forms: list all and get by ID",
+          "Update uses exclude_unset=True for partial updates; Delete cleans up related data"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun implements CRUD through three layers for each entity. The Notes entity demonstrates the complete pattern.\n\nThe Pydantic schemas define the data contract: `NoteCreate` (what goes in on create), `NoteUpdate` (what goes in on update), `NoteOut` (what comes out). The SQLAlchemy model defines the database table. The frontend mirrors the four operations with matching fetch functions.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)",
+            "file_reference": "src/wellbegun/routers/notes.py:24-26",
+            "annotation": "CREATE -- POST /api/notes/ validates input via NoteCreate and returns 201 on success."
+          },
+          {
+            "language": "python",
+            "code": "@router.get(\"/\", response_model=list[NoteOut])\ndef list_notes(db: Session = Depends(get_db)):\n    return note_service.get_all(db)\n\n\n@router.get(\"/{note_id}\", response_model=NoteOut)\ndef get_note(note_id: int, db: Session = Depends(get_db)):\n    note = note_service.get_by_id(db, note_id)\n    if not note:\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return note",
+            "file_reference": "src/wellbegun/routers/notes.py:11-21",
+            "annotation": "READ -- two endpoints: GET / returns all notes, GET /{id} returns one or 404."
+          },
+          {
+            "language": "python",
+            "code": "@router.put(\"/{note_id}\", response_model=NoteOut)\ndef update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db)):\n    updates = data.model_dump(exclude_unset=True)\n    note = note_service.update(db, note_id, **updates)\n    if not note:\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return note",
+            "file_reference": "src/wellbegun/routers/notes.py:29-35",
+            "annotation": "UPDATE -- PUT /api/notes/{id} uses exclude_unset=True for partial updates."
+          },
+          {
+            "language": "python",
+            "code": "@router.delete(\"/{note_id}\")\ndef delete_note(note_id: int, db: Session = Depends(get_db)):\n    if not note_service.delete(db, note_id):\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return {\"ok\": True}",
+            "file_reference": "src/wellbegun/routers/notes.py:38-42",
+            "annotation": "DELETE -- DELETE /api/notes/{id} removes the note and returns confirmation."
+          },
+          {
+            "language": "python",
+            "code": "def create(\n    db: Session,\n    title: str,\n    content: str | None = None,\n) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:16-27",
+            "annotation": "Service CREATE -- creates the SQLAlchemy object, flushes to get the ID, creates an entity tag, commits, and returns."
+          },
+          {
+            "language": "python",
+            "code": "def update(db: Session, note_id: int, **kwargs) -> Note | None:\n    note = get_by_id(db, note_id)\n    if not note:\n        return None\n    for key, value in kwargs.items():\n        if hasattr(note, key):\n            setattr(note, key, value)\n    if \"title\" in kwargs and kwargs[\"title\"] is not None:\n        update_entity_tag(db, \"note\", note_id, kwargs[\"title\"])\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:30-41",
+            "annotation": "Service UPDATE -- uses setattr to apply only the provided kwargs, keeping other fields unchanged."
+          },
+          {
+            "language": "python",
+            "code": "def delete(db: Session, note_id: int) -> bool:\n    note = get_by_id(db, note_id)\n    if not note:\n        return False\n    delete_entity_tag(db, \"note\", note_id)\n    delete_entity_graph_data(db, \"note\", note_id)\n    db.delete(note)\n    db.commit()\n    return True",
+            "file_reference": "src/wellbegun/services/note_service.py:44-52",
+            "annotation": "Service DELETE -- cleans up entity tags and graph data before deleting the note to prevent orphaned references."
+          },
+          {
+            "language": "python",
+            "code": "class NoteCreate(BaseModel):\n    title: str\n    content: str | None = None\n\n\nclass NoteUpdate(BaseModel):\n    title: str | None = None\n    content: str | None = None\n\n\nclass NoteOut(BaseModel):\n    id: int\n    title: str\n    content: str | None = None\n    is_active: bool\n    is_archived: bool\n    created_at: datetime\n    updated_at: datetime\n\n    model_config = {\"from_attributes\": True}",
+            "file_reference": "src/wellbegun/schemas/note.py:6-25",
+            "annotation": "Three schemas for three roles: NoteCreate requires title, NoteUpdate makes everything optional, NoteOut includes server-generated fields."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function getNotes(): Promise<Note[]> {\n\tconst res = await fetch(`${BASE}/`);\n\treturn res.json();\n}\n\nexport async function createNote(data: { title: string; content?: string }): Promise<Note> {\n\tconst res = await fetch(`${BASE}/`, {\n\t\tmethod: 'POST',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}\n\nexport async function updateNote(id: number, data: Partial<Note>): Promise<Note> {\n\tconst res = await fetch(`${BASE}/${id}`, {\n\t\tmethod: 'PUT',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}\n\nexport async function deleteNote(id: number): Promise<void> {\n\tawait fetch(`${BASE}/${id}`, { method: 'DELETE' });\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:5-35",
+            "annotation": "The frontend mirrors all four CRUD operations with matching fetch functions."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Full CRUD Lifecycle for a Note\n\n**1. Create** -- User types \"Meeting Notes\" and clicks save. Frontend sends `POST /api/notes/` with `{\"title\": \"Meeting Notes\", \"content\": \"Discussed roadmap\"}`. Backend returns the note with `id: 42` and status 201.\n\n**2. Read** -- The note list page loads. Frontend sends `GET /api/notes/`. Backend queries `SELECT * FROM notes ORDER BY created_at DESC` and returns the full list.\n\n**3. Update** -- User edits the title. Frontend sends `PUT /api/notes/42` with `{\"title\": \"Q1 Meeting Notes\"}`. Only title changes; content is preserved because `exclude_unset=True` ignores fields not sent.\n\n**4. Delete** -- User removes the note. Frontend sends `DELETE /api/notes/42`. Backend cleans up entity tags and graph data, deletes the note, returns `{\"ok\": true}`.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "// 1. Create\nconst note = await createNote({ title: \"Meeting Notes\", content: \"Discussed roadmap\" });\n// note = { id: 42, title: \"Meeting Notes\", ... }\n\n// 2. Read\nconst allNotes = await getNotes();\n// allNotes = [{ id: 42, ... }, { id: 41, ... }, ...]\n\n// 3. Update\nconst updated = await updateNote(42, { title: \"Q1 Meeting Notes\" });\n// updated = { id: 42, title: \"Q1 Meeting Notes\", content: \"Discussed roadmap\", ... }\n\n// 4. Delete\nawait deleteNote(42);",
+            "file_reference": "frontend/src/lib/api/notes.ts",
+            "annotation": "Complete CRUD lifecycle from the frontend perspective, using the four API functions."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Identify CRUD in Another Entity\n\n**Task**: Open `src/wellbegun/routers/sources.py` and `src/wellbegun/services/source_service.py`. Identify the function names for each CRUD operation. How do they compare to the notes equivalents?\n\n### Exercise 2: Trace the Update Path\n\n**Task**: When the frontend sends `PUT /api/notes/42` with `{\"content\": \"Updated text\"}`, what SQL statement does SQLAlchemy generate? What value does `data.model_dump(exclude_unset=True)` return?\n\n### Exercise 3: Add a Field\n\n**Task**: Suppose you want to add a `priority` field (integer, optional, defaults to 0) to Notes. Which three files would you need to modify, and what would you add to each?",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Open src/wellbegun/routers/sources.py and src/wellbegun/services/source_service.py. Identify the function names for each CRUD operation.",
+            "hints": [
+              "Look for functions matching: list_* / get_* (Read), create_* (Create), update_* (Update), delete_* (Delete).",
+              "The naming convention is identical across all entity types."
+            ],
+            "solution_reference": "src/wellbegun/routers/sources.py and src/wellbegun/services/source_service.py -- same pattern as notes: get_all, get_by_id, create, update, delete"
+          },
+          {
+            "task": "When the frontend sends PUT /api/notes/42 with {\"content\": \"Updated text\"}, what does model_dump(exclude_unset=True) return? What SQL is generated?",
+            "hints": [
+              "exclude_unset=True means only fields explicitly provided in the JSON body are included.",
+              "The updated_at column has onupdate=datetime.utcnow."
+            ],
+            "solution_reference": "model_dump returns {\"content\": \"Updated text\"}. SQL: UPDATE notes SET content = 'Updated text', updated_at = '...' WHERE id = 42"
+          },
+          {
+            "task": "Add a priority field (integer, optional, defaults to 0) to Notes. Which files need changes?",
+            "hints": [
+              "Think about the three layers: model, schema, service.",
+              "The service uses **kwargs and setattr, so it handles new fields automatically."
+            ],
+            "solution_reference": "1. src/wellbegun/models/note.py -- add priority column. 2. src/wellbegun/schemas/note.py -- add to NoteCreate, NoteUpdate, NoteOut. 3. Service and router need no changes due to **kwargs pattern."
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of CRUD operations as implemented in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "Which HTTP method corresponds to the 'Update' operation in CRUD?",
+            "options": [
+              "POST",
+              "GET",
+              "PUT",
+              "DELETE"
+            ],
+            "correct_index": 2,
+            "explanation": "PUT is used to update an existing resource. In WellBegun, PUT /api/notes/{id} updates a note (src/wellbegun/routers/notes.py:29)."
+          },
+          {
+            "question": "What does data.model_dump(exclude_unset=True) do in the update endpoint?",
+            "options": [
+              "Removes all None values from the data",
+              "Returns only the fields the client explicitly included in the request",
+              "Converts the Pydantic model to a SQLAlchemy model",
+              "Validates that all required fields are present"
+            ],
+            "correct_index": 1,
+            "explanation": "exclude_unset=True returns only the fields the client explicitly sent. If the client sends {\"title\": \"New\"}, content is not included and therefore not overwritten."
+          },
+          {
+            "question": "Why does the delete service function clean up entity tags and graph data before deleting the note?",
+            "options": [
+              "SQLAlchemy requires it for all delete operations",
+              "To prevent orphaned references in related tables",
+              "To make the delete operation slower and safer",
+              "The tags and graph data are stored in the same table"
+            ],
+            "correct_index": 1,
+            "explanation": "The entity_tags and knowledge_triples tables reference notes by type and ID. Deleting without cleanup would leave dangling references (src/wellbegun/services/note_service.py:44-52)."
+          },
+          {
+            "question": "Which SQL statement is equivalent to db.query(Note).filter(Note.id == 5).first()?",
+            "options": [
+              "INSERT INTO notes VALUES (5)",
+              "SELECT * FROM notes WHERE id = 5 LIMIT 1",
+              "UPDATE notes SET id = 5",
+              "DELETE FROM notes WHERE id = 5"
+            ],
+            "correct_index": 1,
+            "explanation": ".filter(Note.id == 5) adds the WHERE clause, and .first() limits to one result (returning None if no match)."
+          },
+          {
+            "question": "Why are there separate NoteCreate and NoteUpdate schemas?",
+            "options": [
+              "FastAPI requires separate schemas for each HTTP method",
+              "Create requires title (mandatory), while Update makes all fields optional for partial updates",
+              "One is for the frontend and the other is for the backend",
+              "They have different security permissions"
+            ],
+            "correct_index": 1,
+            "explanation": "NoteCreate has title: str (required) because every note needs a name. NoteUpdate has title: str | None = None because you might only want to change the content."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of CRUD operations.",
+      "metadata": {
+        "links": [
+          {
+            "title": "MDN: HTTP Request Methods",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods",
+            "type": "official-docs"
+          },
+          {
+            "title": "FastAPI Tutorial: Request Body",
+            "url": "https://fastapi.tiangolo.com/tutorial/body/",
+            "type": "tutorial"
+          },
+          {
+            "title": "SQLAlchemy ORM Quickstart",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/quickstart.html",
+            "type": "official-docs"
+          },
+          {
+            "title": "Pydantic: Serialization",
+            "url": "https://docs.pydantic.dev/latest/concepts/serialization/",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

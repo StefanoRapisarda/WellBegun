@@ -1015,6 +1015,25 @@
 								</span>
 							{/if}
 						</div>
+						<div class="extra-line editable-field">
+							<span class="extra-label">Outcome</span>
+							{#if editingField === 'outcome'}
+								<textarea
+									class="extra-field-input"
+									bind:value={editFieldText}
+									rows="2"
+									placeholder="Describe the outcome..."
+									onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveField('outcome'); } else if (e.key === 'Escape') { e.stopPropagation(); editingField = null; } }}
+									onblur={() => saveField('outcome')}
+									autofocus
+								></textarea>
+							{:else}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<span class="extra-field-value" class:empty={!data.outcome} onclick={() => { editingField = 'outcome'; editFieldText = data.outcome ?? ''; }}>
+									{data.outcome || 'Add outcome...'}
+								</span>
+							{/if}
+						</div>
 					{:else if entityType === 'project'}
 						<div class="extra-line editable-field">
 							<span class="extra-label">Status</span>
@@ -1410,7 +1429,7 @@
 					{#if entityTags.length > 0}
 						<div class="tag-badges">
 							{#each entityTags as tag (tag.id)}
-								<TagBadge {tag} />
+								<TagBadge {tag} removable onRemove={() => handleDetach(tag)} />
 							{/each}
 						</div>
 					{/if}

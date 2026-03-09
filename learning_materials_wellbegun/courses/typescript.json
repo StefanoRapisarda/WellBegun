@@ -1,0 +1,507 @@
+{
+  "id": "course_004",
+  "slug": "typescript",
+  "title": "TypeScript Essentials",
+  "technology": "TypeScript",
+  "category": "language",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "You write Python with type hints (PEP 484). You haven't used TypeScript before but are comfortable with static typing concepts.",
+  "relevance_to_project": "The WellBegun frontend is written in TypeScript. The file frontend/src/lib/types.ts (270 lines) acts as the contract between the frontend and backend — every interface mirrors a Pydantic schema or SQLAlchemy model on the Python side.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "TypeScript adds type annotations to JavaScript, much like Python's type hints (PEP 484). If you write `def greet(name: str) -> str:` in Python, you will feel right at home with TypeScript's `function greet(name: string): string`. The key difference: Python's type hints are optional and ignored at runtime, while TypeScript's annotations are checked at compile time and stripped from the JavaScript that actually runs in the browser.\n\n### Python Bridge\n\nIf you write `def greet(name: str) -> str:` in Python, TypeScript's `function greet(name: string): string` follows the same idea -- annotate inputs and outputs with types. The difference is that TypeScript enforces these annotations at compile time, catching type errors before your code ever runs.",
+      "metadata": {
+        "key_takeaways": [
+          "TypeScript = JavaScript + type annotations (like Python + type hints, but enforced at compile time)",
+          "Interfaces define object shapes (like Python's TypedDict or dataclass)",
+          "Generics let you parameterize types (like Python's list[int] or dict[str, Any])",
+          "Union types (string | null) handle nullable values (like Python's str | None)"
+        ]
+      }
+    },
+    {
+      "id": "concept-type-annotations",
+      "title": "Type Annotations",
+      "type": "concept",
+      "order": 2,
+      "content_md": "TypeScript uses colon-based type annotations after parameter names and after the parameter list for return types. Python uses the same colon syntax for parameters but uses `->` for return types. TypeScript has `number` (no int/float distinction), `string`, and `boolean` as primitives.\n\n### Python Comparison\n\n**Python:**\n```python\ndef get_collection(id: int) -> Collection | None:\n    ...\n```\n\n**TypeScript:**\n```typescript\nfunction getCollection(id: number): Collection | null { ... }\n```\n\n### Key Differences\n\n- Python `int` and `float` both map to TypeScript `number`\n- Python `str` maps to TypeScript `string` (lowercase)\n- Python `bool` maps to TypeScript `boolean` (lowercase)\n- Python uses `->` for return type; TypeScript uses `:` after the parameter list\n- Optional parameters use `?` suffix in TypeScript vs `= None` default in Python",
+      "metadata": {
+        "concept_id": "type-annotations",
+        "python_comparison": {
+          "python_example": "def get_collection(id: int) -> Collection | None:\n    ...",
+          "typescript_equivalent": "function getCollection(id: number): Collection | null { ... }",
+          "key_differences": [
+            "Python `int` and `float` both map to TypeScript `number`",
+            "Python `str` maps to TypeScript `string` (lowercase)",
+            "Python `bool` maps to TypeScript `boolean` (lowercase)",
+            "Python uses `->` for return type; TypeScript uses `:` after the parameter list",
+            "Optional parameters use `?` suffix in TypeScript vs `= None` default in Python"
+          ]
+        },
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "5-9",
+            "description": "An async function with an optional parameter (categoryId?: number) and a typed return (Promise<Collection[]>). The `?` makes the parameter optional, equivalent to Python's `category_id: int | None = None`.",
+            "code": "export async function getCollections(categoryId?: number): Promise<Collection[]> {\n\tconst url = categoryId != null ? `${BASE}/?category_id=${categoryId}` : `${BASE}/`;\n\tconst res = await fetch(url);\n\treturn res.json();\n}"
+          },
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "11-14",
+            "description": "A function with a single typed parameter and a single typed return value.",
+            "code": "export async function getCollection(id: number): Promise<Collection> {\n\tconst res = await fetch(`${BASE}/${id}`);\n\treturn res.json();\n}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-interfaces",
+      "title": "Interfaces vs Python Dataclasses",
+      "type": "concept",
+      "order": 3,
+      "content_md": "An interface defines the shape of an object -- what fields it has and what types those fields are. Interfaces exist only at compile time and produce zero runtime code. They are the TypeScript equivalent of Python dataclasses or Pydantic models.\n\n### Python Comparison\n\n**Python (Pydantic):**\n```python\nclass CollectionOut(BaseModel):\n    id: int\n    entity_type: str\n    title: str\n    description: str | None = None\n    category_id: int\n    is_active: bool\n    is_archived: bool\n    created_at: datetime\n    updated_at: datetime\n    items: list[CollectionItemOut] = []\n\n    model_config = {\"from_attributes\": True}\n```\n\n**TypeScript:**\n```typescript\nexport interface Collection {\n    id: number;\n    entity_type: string;\n    title: string;\n    description: string | null;\n    category_id: number;\n    is_active: boolean;\n    is_archived: boolean;\n    created_at: string;\n    updated_at: string;\n    items: CollectionItem[];\n}\n```\n\n### Key Differences\n\n- Interfaces produce zero runtime code -- there is no Collection class to instantiate\n- Python Pydantic models validate data at runtime; TypeScript interfaces only check at compile time\n- `datetime` becomes `string` because JSON serializes dates as ISO strings\n- `list[CollectionItemOut]` becomes `CollectionItem[]` (array syntax)",
+      "metadata": {
+        "concept_id": "interfaces",
+        "python_comparison": {
+          "python_example": "class CollectionOut(BaseModel):\n    id: int\n    entity_type: str\n    title: str\n    description: str | None = None\n    category_id: int\n    is_active: bool\n    is_archived: bool\n    created_at: datetime\n    updated_at: datetime\n    items: list[CollectionItemOut] = []\n\n    model_config = {\"from_attributes\": True}",
+          "typescript_equivalent": "export interface Collection {\n    id: number;\n    entity_type: string;\n    title: string;\n    description: string | null;\n    category_id: number;\n    is_active: boolean;\n    is_archived: boolean;\n    created_at: string;\n    updated_at: string;\n    items: CollectionItem[];\n}",
+          "key_differences": [
+            "Interfaces produce zero runtime code -- there is no Collection class to instantiate",
+            "Python Pydantic models validate data at runtime; TypeScript interfaces only check at compile time",
+            "datetime becomes string because JSON serializes dates as ISO strings",
+            "list[CollectionItemOut] becomes CollectionItem[] (array syntax)"
+          ]
+        },
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "213-224",
+            "description": "The Collection interface mirrors the Pydantic CollectionOut schema from the backend, defining the shape of collection data as it arrives from the API.",
+            "code": "export interface Collection {\n\tid: number;\n\tentity_type: string;\n\ttitle: string;\n\tdescription: string | null;\n\tcategory_id: number;\n\tis_active: boolean;\n\tis_archived: boolean;\n\tcreated_at: string;\n\tupdated_at: string;\n\titems: CollectionItem[];\n}"
+          },
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "200-211",
+            "description": "The CollectionItem interface, referenced by Collection's items field. Shows how interfaces compose to describe nested data structures.",
+            "code": "export interface CollectionItem {\n\tid: number;\n\tcollection_id: number;\n\tmember_entity_type: string;\n\tmember_entity_id: number;\n\tposition: number;\n\tstatus: string | null;\n\tnotes: string | null;\n\theader: string | null;\n\tcreated_at: string;\n\tupdated_at: string;\n}"
+          },
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "1-12",
+            "description": "The Tag interface demonstrates all the basic TypeScript types in one place: number, string, boolean, union types (string | null), and nullable number (number | null).",
+            "code": "export interface Tag {\n\tid: number;\n\tname: string;\n\tcategory: string;\n\tfull_tag: string;\n\tdescription: string | null;\n\tcolor: string | null;\n\tentity_type: string | null;\n\tentity_id: number | null;\n\tis_system: boolean;\n\tcreated_at: string;\n}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-generics",
+      "title": "Generics",
+      "type": "concept",
+      "order": 4,
+      "content_md": "Generics let you parameterize types, just like Python's `list[int]` or `dict[str, Any]`. TypeScript uses angle brackets (`<T>`) instead of Python's square brackets (`[T]`). Common examples in WellBegun include `writable<Collection[]>` (a reactive store of collections) and `Promise<Collection>` (an async result that resolves to a collection).\n\n### Python Comparison\n\n**Python:**\n```python\ncollections: list[Collection] = []\nresult: Awaitable[list[Collection]]\n```\n\n**TypeScript:**\n```typescript\nconst collections = writable<Collection[]>([]);\nfunction getCollections(): Promise<Collection[]>\n```\n\n### Key Differences\n\n- TypeScript uses angle brackets `<T>` instead of square brackets `[T]`\n- `Promise<T>` is TypeScript's equivalent of Python's async return type\n- Array types can be written as `T[]` or `Array<T>` (`T[]` is more common)\n- Built-in utility types like `Partial<T>` and `Record<K,V>` are heavily used",
+      "metadata": {
+        "concept_id": "generics",
+        "python_comparison": {
+          "python_example": "collections: list[Collection] = []\nresult: Awaitable[list[Collection]]",
+          "typescript_equivalent": "const collections = writable<Collection[]>([]);\nfunction getCollections(): Promise<Collection[]>",
+          "key_differences": [
+            "TypeScript uses angle brackets <T> instead of square brackets [T]",
+            "Promise<T> is TypeScript's equivalent of Python's async return type",
+            "Array types can be written as T[] or Array<T> (T[] is more common)",
+            "Built-in utility types like Partial<T> and Record<K,V> are heavily used"
+          ]
+        },
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/stores/collections.ts",
+            "lines": "5",
+            "description": "A Svelte writable store parameterized with Collection[]. The generic tells the store what type of data it holds, equivalent to Python's list[Collection].",
+            "code": "export const collections = writable<Collection[]>([]);"
+          },
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "25-32",
+            "description": "The Partial<Collection> utility type makes every field in Collection optional. This is a built-in generic that TypeScript provides -- Python has no direct equivalent (you would create a separate CollectionUpdate class manually).",
+            "code": "export async function updateCollection(id: number, data: Partial<Collection>): Promise<Collection> {\n\tconst res = await fetch(`${BASE}/${id}`, {\n\t\tmethod: 'PUT',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}"
+          },
+          {
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "5-7",
+            "description": "Multiple generic types in action: writable<Workspace[]>, writable<WorkspaceDetail | null>, and a derived store. The derived store's callback uses optional chaining (?.) and nullish coalescing (??) to safely handle null values.",
+            "code": "export const workspaces = writable<Workspace[]>([]);\nexport const activeWorkspace = writable<WorkspaceDetail | null>(null);\nexport const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-union-types",
+      "title": "Union Types and Optional Properties",
+      "type": "concept",
+      "order": 5,
+      "content_md": "Union types combine multiple possible types with the `|` operator, exactly as in modern Python (3.10+). TypeScript distinguishes between `null` (explicitly no value, like Python's None) and `undefined` (not yet assigned, no Python equivalent). The `?` on a property means it can be `undefined`.\n\n### Python Comparison\n\n**Python:**\n```python\ndescription: str | None = None\nstatus: Mapped[str | None] = mapped_column(String(50), nullable=True)\n```\n\n**TypeScript:**\n```typescript\ndescription: string | null;\ncategoryId?: number;  // optional, can be undefined\n```\n\n### Key Differences\n\n- TypeScript has both `null` and `undefined`; Python only has `None`\n- `field?: type` means the field can be absent (undefined)\n- `field: type | null` means the field must be present but can be null\n- JSON APIs typically use `null` (not `undefined`) for missing values",
+      "metadata": {
+        "concept_id": "union-types",
+        "python_comparison": {
+          "python_example": "description: str | None = None\nstatus: Mapped[str | None] = mapped_column(String(50), nullable=True)",
+          "typescript_equivalent": "description: string | null;\ncategoryId?: number;  // optional, can be undefined",
+          "key_differences": [
+            "TypeScript has both null and undefined; Python only has None",
+            "field?: type means the field can be absent (undefined)",
+            "field: type | null means the field must be present but can be null",
+            "JSON APIs typically use null (not undefined) for missing values"
+          ]
+        },
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "48-65",
+            "description": "The Activity interface has many nullable fields (number | null, string | null), showing how TypeScript handles database columns that allow NULL values.",
+            "code": "export interface Activity {\n\tid: number;\n\tlog_id: number | null;\n\tplan_id: number | null;\n\tsource_id: number | null;\n\ttitle: string;\n\tdescription: string | null;\n\tduration: number | null;\n\tposition: number;\n\theader: string | null;\n\tstatus: string;\n\tactivity_date: string | null;\n\tis_active: boolean;\n\tis_archived: boolean;\n\tcreated_at: string;\n\tupdated_at: string;\n}"
+          },
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "16-23",
+            "description": "An inline object type with both required and optional fields. The `description?: string` means the field can be omitted entirely when calling createCollection.",
+            "code": "export async function createCollection(data: { title: string; category_id: number; description?: string }): Promise<Collection> {\n\tconst res = await fetch(`${BASE}/`, {\n\t\tmethod: 'POST',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}"
+          },
+          {
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "7",
+            "description": "The derived store uses optional chaining (?.) and nullish coalescing (??) to safely extract the workspace id or default to null. This is equivalent to Python's `ws.id if ws is not None else None`.",
+            "code": "export const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-import-type",
+      "title": "The import type Syntax",
+      "type": "concept",
+      "order": 6,
+      "content_md": "TypeScript's `import type` syntax tells the compiler that the imported symbols are only used for type checking and should be erased from the compiled JavaScript output. Since interfaces produce no runtime code, importing them with `import type` makes the developer's intent explicit and can help with tree-shaking.\n\n### Python Comparison\n\n**Python:**\n```python\nfrom __future__ import annotations  # makes all annotations strings\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from models import Collection  # only imported for type checkers\n```\n\n**TypeScript:**\n```typescript\nimport type { Collection, CollectionItem } from '$lib/types';\n```\n\n### Key Differences\n\n- TypeScript's `import type` is simpler than Python's `TYPE_CHECKING` pattern\n- Types are always erased at compile time in TypeScript; in Python, annotations can be inspected at runtime unless using `from __future__ import annotations`\n- Regular imports include both runtime values and types; `import type` is types only",
+      "metadata": {
+        "concept_id": "import-type",
+        "python_comparison": {
+          "python_example": "from __future__ import annotations  # makes all annotations strings\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from models import Collection  # only imported for type checkers",
+          "typescript_equivalent": "import type { Collection, CollectionItem } from '$lib/types';",
+          "key_differences": [
+            "TypeScript's import type is simpler than Python's TYPE_CHECKING pattern",
+            "Types are always erased at compile time in TypeScript; in Python, annotations can be inspected at runtime unless using `from __future__ import annotations`",
+            "Regular imports include both runtime values and types; import type is types only"
+          ]
+        },
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "1",
+            "description": "Type-only import: Collection and CollectionItem are interfaces that exist only at compile time. The `import type` makes this explicit.",
+            "code": "import type { Collection, CollectionItem } from '$lib/types';"
+          },
+          {
+            "file": "frontend/src/lib/stores/collections.ts",
+            "lines": "1-3",
+            "description": "Contrast between runtime imports (writable, getCollections are actual functions) and type-only imports (Collection is an interface erased at compile time).",
+            "code": "import { writable } from 'svelte/store';\nimport type { Collection } from '$lib/types';\nimport { getCollections } from '$lib/api/collections';"
+          },
+          {
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "1-3",
+            "description": "The workspaces store imports runtime values (writable, derived, API functions) separately from type-only imports (Workspace, WorkspaceDetail).",
+            "code": "import { writable, derived } from 'svelte/store';\nimport type { Workspace, WorkspaceDetail } from '$lib/types';\nimport { getWorkspaces, getWorkspace, openWorkspace } from '$lib/api/workspaces';"
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 7,
+      "content_md": "The file `frontend/src/lib/types.ts` (270 lines) acts as the contract between the frontend and backend. Every interface mirrors a Pydantic schema or SQLAlchemy model on the Python side. When the backend returns JSON from an API endpoint, the frontend casts that JSON to the appropriate TypeScript interface.\n\n### Type Flow\n\n1. **SQLAlchemy Model (Python)** defines the database columns\n2. **Pydantic Schema (Python)** defines the serialization format\n3. **JSON** travels over the network (HTTP)\n4. **TypeScript Interface (frontend)** types the received data\n5. **Svelte Store** holds the typed data for components\n\n### Key Files\n\n| File | Role | Lines |\n|------|------|-------|\n| `frontend/src/lib/types.ts` | Central type definitions -- all interfaces used across the frontend | 270 |\n| `frontend/src/lib/api/collections.ts` | API client functions with typed parameters and return values | 83 |\n| `frontend/src/lib/stores/collections.ts` | Reactive store with generic type parameter `writable<Collection[]>` | 14 |\n| `frontend/src/lib/stores/workspaces.ts` | Demonstrates derived stores, union types (`WorkspaceDetail | null`), and nullish coalescing | 45 |",
+      "metadata": {
+        "type_flow": [
+          "SQLAlchemy Model (Python) defines the database columns",
+          "Pydantic Schema (Python) defines the serialization format",
+          "JSON travels over the network (HTTP)",
+          "TypeScript Interface (frontend) types the received data",
+          "Svelte Store holds the typed data for components"
+        ],
+        "key_files": [
+          {
+            "file": "frontend/src/lib/types.ts",
+            "role": "Central type definitions -- all interfaces used across the frontend",
+            "lines": 270
+          },
+          {
+            "file": "frontend/src/lib/api/collections.ts",
+            "role": "API client functions with typed parameters and return values",
+            "lines": 83
+          },
+          {
+            "file": "frontend/src/lib/stores/collections.ts",
+            "role": "Reactive store with generic type parameter writable<Collection[]>",
+            "lines": 14
+          },
+          {
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "role": "Demonstrates derived stores, union types (WorkspaceDetail | null), and nullish coalescing",
+            "lines": 45
+          }
+        ],
+        "code_examples": [
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "141-149",
+            "description": "The tagCategoryPrefix function shows that types.ts contains utility functions alongside interfaces. It takes a Tag and returns a string, with the compiler ensuring type safety.",
+            "code": "export function tagCategoryPrefix(tag: Tag): string {\n\tif (tag.entity_id !== null && tag.entity_id !== undefined) {\n\t\treturn tag.category;\n\t}\n\tif (tag.category === 'wild') {\n\t\treturn 'tag';\n\t}\n\treturn `wd-${tag.category}`;\n}"
+          },
+          {
+            "file": "frontend/src/lib/types.ts",
+            "lines": "118-134",
+            "description": "The Plan interface demonstrates nested arrays of different types (items: PlanItem[] and activities: Activity[]), showing how interfaces compose to describe complex data structures.",
+            "code": "export interface Plan {\n\tid: number;\n\ttitle: string;\n\tdescription: string | null;\n\tmotivation: string | null;\n\toutcome: string | null;\n\tgoal: string | null;\n\tstart_date: string | null;\n\tend_date: string | null;\n\tstatus: string;\n\tis_active: boolean;\n\tis_archived: boolean;\n\tcreated_at: string;\n\tupdated_at: string;\n\titems: PlanItem[];\n\tactivities: Activity[];\n}"
+          },
+          {
+            "file": "frontend/src/lib/stores/collections.ts",
+            "lines": "7-13",
+            "description": "A complete async function with try/catch error handling, showing how the typed store (writable<Collection[]>) is populated from the typed API function (getCollections).",
+            "code": "export async function loadCollections(categoryId?: number) {\n\ttry {\n\t\tcollections.set(await getCollections(categoryId));\n\t} catch (e) {\n\t\tconsole.warn('Failed to load collections:', e);\n\t}\n}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "example-collection-interface-trace",
+      "title": "Reading the Collection Interface",
+      "type": "example",
+      "order": 8,
+      "content_md": "### Guided Example: Reading the Collection Interface\n\nTrace how the Collection type flows from the TypeScript interface through the API client to the reactive store.\n\n**Step 1: The interface definition** (`frontend/src/lib/types.ts`, lines 200-224)\n\nCollectionItem is defined first (lines 200-211), then Collection (lines 213-224). Collection has a field `items: CollectionItem[]` -- an array of collection items. This is how TypeScript expresses 'a list of CollectionItem objects.'\n\n**Step 2: Compare to the Python model** (`src/wellbegun/models/collection.py`, lines 53-71)\n\nThe SQLAlchemy model has `items: Mapped[list[\"CollectionItem\"]]` as a relationship. The TypeScript interface does not know about database relationships -- it sees the flat JSON that arrives over the network.\n\n**Step 3: The API client uses it** (`frontend/src/lib/api/collections.ts`, lines 11-14)\n\nThe return type `Promise<Collection>` tells every caller exactly what shape of data they will receive. If you try to access `collection.nonexistent_field`, TypeScript flags it as an error before the code ever runs.\n\n**Step 4: The store holds it** (`frontend/src/lib/stores/collections.ts`, lines 5-13)\n\nThe `writable<Collection[]>([])` store holds the typed data. The `loadCollections` function populates it by calling the typed API function. Type safety flows from the interface through the API to the store.",
+      "metadata": {
+        "guided_example_id": "collection-interface-trace",
+        "steps": [
+          {
+            "step": 1,
+            "title": "The interface definition",
+            "file": "frontend/src/lib/types.ts",
+            "lines": "200-224",
+            "explanation": "CollectionItem is defined first (lines 200-211), then Collection (lines 213-224). Collection has a field `items: CollectionItem[]` -- an array of collection items. This is how TypeScript expresses 'a list of CollectionItem objects.'"
+          },
+          {
+            "step": 2,
+            "title": "Compare to the Python model",
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "53-71",
+            "explanation": "The SQLAlchemy model has `items: Mapped[list[\"CollectionItem\"]]` as a relationship. The TypeScript interface does not know about database relationships -- it sees the flat JSON that arrives over the network."
+          },
+          {
+            "step": 3,
+            "title": "The API client uses it",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "11-14",
+            "explanation": "The return type Promise<Collection> tells every caller exactly what shape of data they will receive. If you try to access collection.nonexistent_field, TypeScript flags it as an error before the code ever runs."
+          },
+          {
+            "step": 4,
+            "title": "The store holds it",
+            "file": "frontend/src/lib/stores/collections.ts",
+            "lines": "5-13",
+            "explanation": "The writable<Collection[]>([]) store holds the typed data. The loadCollections function populates it by calling the typed API function. Type safety flows from the interface through the API to the store."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example-api-function-signatures",
+      "title": "Walking Through API Function Signatures",
+      "type": "example",
+      "order": 9,
+      "content_md": "### Guided Example: Walking Through API Function Signatures\n\nExamine progressively more complex type annotations in the collections API client.\n\n**Step 1: Simple return type** (`frontend/src/lib/api/collections.ts`, lines 11-14)\n\nOne parameter (`id: number`), returns `Promise<Collection>`. The simplest function signature pattern.\n\n**Step 2: Optional parameter** (`frontend/src/lib/api/collections.ts`, lines 5-9)\n\nThe `?` makes `categoryId` optional. Returns an array: `Promise<Collection[]>`.\n\n**Step 3: Object parameter type** (`frontend/src/lib/api/collections.ts`, lines 16-23)\n\nThe parameter `data` uses an inline object type with both required (`title`, `category_id`) and optional (`description?`) fields.\n\n**Step 4: Partial utility type** (`frontend/src/lib/api/collections.ts`, lines 25-32)\n\n`Partial<Collection>` makes every Collection field optional. This is a built-in TypeScript utility type with no direct Python equivalent.\n\n**Step 5: Void return type** (`frontend/src/lib/api/collections.ts`, lines 34-36)\n\n`Promise<void>` means the function returns nothing meaningful, like Python's `-> None`.\n\n**Step 6: Error handling with complex parameter** (`frontend/src/lib/api/collections.ts`, lines 58-69)\n\nThe `addItem` function has a complex inline object parameter with many optional fields, and includes error handling with typed error responses.",
+      "metadata": {
+        "guided_example_id": "api-function-signatures",
+        "steps": [
+          {
+            "step": 1,
+            "title": "Simple return type",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "11-14",
+            "explanation": "One parameter (id: number), returns Promise<Collection>. The simplest function signature pattern."
+          },
+          {
+            "step": 2,
+            "title": "Optional parameter",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "5-9",
+            "explanation": "The `?` makes categoryId optional. Returns an array: Promise<Collection[]>."
+          },
+          {
+            "step": 3,
+            "title": "Object parameter type",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "16-23",
+            "explanation": "The parameter `data` uses an inline object type with both required (title, category_id) and optional (description?) fields."
+          },
+          {
+            "step": 4,
+            "title": "Partial utility type",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "25-32",
+            "explanation": "Partial<Collection> makes every Collection field optional. This is a built-in TypeScript utility type with no direct Python equivalent."
+          },
+          {
+            "step": 5,
+            "title": "Void return type",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "34-36",
+            "explanation": "Promise<void> means the function returns nothing meaningful, like Python's `-> None`."
+          },
+          {
+            "step": 6,
+            "title": "Error handling with complex parameter",
+            "file": "frontend/src/lib/api/collections.ts",
+            "lines": "58-69",
+            "explanation": "The addItem function has a complex inline object parameter with many optional fields, and includes error handling with typed error responses."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 10,
+      "content_md": "### Exercise 1: Write an Interface\n\nWrite a TypeScript interface for a Bookmark that has: an id (number), a url (string), a title (string), an optional notes field (string or null), a created_at (string), and a list of tags (array of strings).\n\n### Exercise 2: Write a Function Signature\n\nWrite the TypeScript signature for an async function `getBookmark` that takes a numeric id and returns a `Promise<Bookmark>`.\n\n### Exercise 3: Translate Python to TypeScript\n\nConvert this Python Pydantic model to a TypeScript interface:\n\n```python\nclass Experiment(BaseModel):\n    id: int\n    name: str\n    description: str | None = None\n    parameters: dict[str, float]\n    is_complete: bool\n    results: list[float]\n    created_at: datetime\n```\n\n### Exercise 4: Spot the Difference\n\nLook at the Plan interface in `types.ts` (lines 118-134). It has two array fields: `items: PlanItem[]` and `activities: Activity[]`. The Collection interface also has an items field. What is the difference between how Plan and Collection use nested arrays?",
+      "metadata": {
+        "exercises": [
+          {
+            "id": "write-interface",
+            "title": "Write an Interface",
+            "order": 1,
+            "prompt": "Write a TypeScript interface for a Bookmark that has: an id (number), a url (string), a title (string), an optional notes field (string or null), a created_at (string), and a list of tags (array of strings).",
+            "solution": "export interface Bookmark {\n    id: number;\n    url: string;\n    title: string;\n    notes: string | null;\n    created_at: string;\n    tags: string[];\n}",
+            "hints": [
+              "Use `string[]` for an array of strings (equivalent to Python's list[str])",
+              "Use `string | null` for a field that can be null"
+            ]
+          },
+          {
+            "id": "write-function-signature",
+            "title": "Write a Function Signature",
+            "order": 2,
+            "prompt": "Write the TypeScript signature for an async function getBookmark that takes a numeric id and returns a Promise<Bookmark>.",
+            "solution": "export async function getBookmark(id: number): Promise<Bookmark> {\n    // ...\n}",
+            "hints": [
+              "Async functions always return a Promise",
+              "The return type annotation comes after the parameter list"
+            ]
+          },
+          {
+            "id": "python-to-typescript",
+            "title": "Translate Python to TypeScript",
+            "order": 3,
+            "prompt": "Convert this Python Pydantic model to a TypeScript interface:\n\nclass Experiment(BaseModel):\n    id: int\n    name: str\n    description: str | None = None\n    parameters: dict[str, float]\n    is_complete: bool\n    results: list[float]\n    created_at: datetime",
+            "solution": "export interface Experiment {\n    id: number;\n    name: string;\n    description: string | null;\n    parameters: Record<string, number>;\n    is_complete: boolean;\n    results: number[];\n    created_at: string;\n}",
+            "hints": [
+              "dict[str, float] maps to Record<string, number>",
+              "datetime becomes string because JSON serializes dates as ISO strings",
+              "Both int and float map to number in TypeScript"
+            ]
+          },
+          {
+            "id": "spot-the-difference",
+            "title": "Spot the Difference",
+            "order": 4,
+            "prompt": "Look at the Plan interface in types.ts (lines 118-134). It has two array fields: items: PlanItem[] and activities: Activity[]. The Collection interface also has an items field. What is the difference between how Plan and Collection use nested arrays?",
+            "solution": "Plan has two nested arrays (items: PlanItem[] and activities: Activity[]), while Collection has one (items: CollectionItem[]). Both use the same pattern: an array of typed objects. The difference is that Plan nests two different entity types, showing that interfaces can compose freely. On the Python side, these correspond to two separate SQLAlchemy relationships on the Plan model.",
+            "hints": [
+              "Compare the number and types of array fields in each interface",
+              "Consider what each array holds and how they relate to the Python backend"
+            ],
+            "related_files": [
+              "frontend/src/lib/types.ts"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 11,
+      "content_md": "Test your understanding of TypeScript essentials as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "id": "q1-nullable-types",
+            "question": "What is the TypeScript equivalent of Python's `str | None`?",
+            "answer": "`string | null`. TypeScript uses `null` where Python uses `None`. TypeScript also has `undefined`, which represents a variable that has been declared but not assigned -- a concept that does not exist in Python.",
+            "concept": "union-types"
+          },
+          {
+            "id": "q2-import-type",
+            "question": "What does `import type` do, and why is it used instead of a regular `import`?",
+            "answer": "`import type` tells the TypeScript compiler that the imported symbol is only used for type checking and should be completely removed from the compiled JavaScript output. It is used for interfaces and type aliases that have no runtime representation. This makes the developer's intent explicit and can help bundlers produce smaller output.",
+            "concept": "import-type"
+          },
+          {
+            "id": "q3-generics-store",
+            "question": "In `writable<Collection[]>([])`, what do the angle brackets and the parenthesized empty array each mean?",
+            "answer": "`<Collection[]>` is a generic type parameter telling `writable` that the store holds an array of Collection objects (equivalent to Python's list[Collection]). `([])` is the initial value passed to the function: an empty array. The full expression creates a reactive store initialized with an empty list typed to hold Collection objects.",
+            "concept": "generics"
+          },
+          {
+            "id": "q4-optional-vs-nullable",
+            "question": "What is the difference between `description?: string` and `description: string | null`?",
+            "answer": "`description?: string` means the property is optional -- it may be absent entirely (its value would be `undefined` if accessed). `description: string | null` means the property must be present, but its value can be either a string or `null`. In practice, JSON APIs typically use `null` for missing values, so interface fields corresponding to nullable database columns are usually typed as `string | null`.",
+            "concept": "union-types"
+          },
+          {
+            "id": "q5-dates-as-strings",
+            "question": "Why does TypeScript use `string` for dates (like `created_at: string`) instead of a `Date` type?",
+            "answer": "When data arrives from the backend as JSON, date values are serialized as ISO-format strings (e.g., '2026-03-05T10:30:00'). JSON has no native date type. The TypeScript interface describes the shape of the JSON as it arrives over the network, so it uses `string`. To perform date operations, you would parse it: `new Date(collection.created_at)`.",
+            "concept": "type-annotations"
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 12,
+      "content_md": "Curated resources for deepening your understanding of TypeScript.",
+      "metadata": {
+        "links": [
+          {
+            "title": "TypeScript Handbook -- The Basics",
+            "url": "https://www.typescriptlang.org/docs/handbook/",
+            "type": "official-docs",
+            "description": "The official TypeScript guide, start with 'The Basics' chapter"
+          },
+          {
+            "title": "TypeScript in 5 Minutes",
+            "url": "https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes.html",
+            "type": "tutorial",
+            "description": "A quick-start overview suitable for developers coming from other languages"
+          },
+          {
+            "title": "Utility Types Reference",
+            "url": "https://www.typescriptlang.org/docs/handbook/utility-types.html",
+            "type": "official-docs",
+            "description": "Documentation for Partial<T>, Record<K,V>, Pick<T,K>, and other built-in utility types"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -13,6 +13,7 @@
 		{ value: 'source', label: 'Source' },
 		{ value: 'actor', label: 'Actor' },
 		{ value: 'plan', label: 'Plan' },
+		{ value: 'collection', label: 'Collection' },
 	];
 
 	const TYPE_COLORS: Record<string, string> = {
@@ -23,6 +24,7 @@
 		source: '#c9a227',
 		actor: '#8b4557',
 		plan: '#6b8ba3',
+		collection: '#7c6f9e',
 	};
 
 	export interface QueryPanelState {

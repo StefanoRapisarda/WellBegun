@@ -19,7 +19,7 @@
 	import { loadActors } from '$lib/stores/actors';
 	import { loadPlans } from '$lib/stores/plans';
 	import { loadCollections } from '$lib/stores/collections';
-	import { updateItem, updateCollection, createCollection, addItem } from '$lib/api/collections';
+	import { updateItem, updateCollection, createCollection, addItem, removeItem } from '$lib/api/collections';
 	import { categories } from '$lib/stores/categories';
 	import {
 		upsertBoardNode,
@@ -48,7 +48,9 @@
 	import GraphCard from './GraphCard.svelte';
 	import CollectionContainer from './CollectionContainer.svelte';
 	import {
-		containerWidth as ccWidth, containerHeight as ccHeight
+		containerWidth as ccWidth, containerHeight as ccHeight,
+		containerHeightNested as ccHeightNested,
+		type ContainerMember,
 	} from './collectionLayout';
 	import GraphConnections from './GraphConnections.svelte';
 	import GraphToolbar from './GraphToolbar.svelte';
@@ -104,6 +106,10 @@
 	// ── Connect state (drag-to-connect) ──
 	let dropTarget: { type: string; id: number } | null = $state(null);
 	let draggingKey: string | null = $state(null);
+
+	// ── Member drag-out state ──
+	// Tracks when a member is being dragged out of a collection container
+	let draggingFromCollection: { collectionId: number; memberType: string; memberId: number; itemId?: number } | null = $state(null);
 
 	// ── Z-index management (bring-to-front on interact) ──
 	let topZKey: string | null = $state(null);
@@ -308,28 +314,49 @@
 
 	let visibleNodeKeys = $derived(new Set(visibleNodes.map(n => `${n.entity_type}:${n.entity_id}`)));
 
-	// Build collection containers: collection nodes with their member entities
-	let collectionContainerMap = $derived.by(() => {
-		const map = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
-		for (const node of visibleNodes) {
-			if (node.entity_type !== 'collection') continue;
-			const coll = $collections.find(c => c.id === node.entity_id);
-			if (!coll) continue;
-			const members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> = [];
-			for (const item of (coll.items || [])) {
-				const data = getEntityData(item.member_entity_type, item.member_entity_id);
-				if (data) {
-					members.push({
-						entityType: item.member_entity_type,
-						entityId: item.member_entity_id,
-						title: getEntityTitle(item.member_entity_type, item.member_entity_id),
-						status: item.status ?? data.status,
-						itemId: item.id,
-					});
+	// Nested collection expanded states (local UI state, collapsed by default)
+	let nestedExpandedMap = $state<Record<number, boolean>>({});
+
+	function handleNestedToggleCollapse(collectionId: number) {
+		nestedExpandedMap = { ...nestedExpandedMap, [collectionId]: !nestedExpandedMap[collectionId] };
+	}
+
+	// Build member data for a collection, attaching nested info for collection-type members
+	function buildMembers(collId: number): ContainerMember[] {
+		const coll = $collections.find(c => c.id === collId);
+		if (!coll) return [];
+		const members: ContainerMember[] = [];
+		for (const item of (coll.items || [])) {
+			const data = getEntityData(item.member_entity_type, item.member_entity_id);
+			if (!data) continue;
+			const member: ContainerMember = {
+				entityType: item.member_entity_type,
+				entityId: item.member_entity_id,
+				title: getEntityTitle(item.member_entity_type, item.member_entity_id),
+				status: item.status ?? data.status,
+				itemId: item.id,
+			};
+			if (item.member_entity_type === 'collection') {
+				const nestedColl = $collections.find(c => c.id === item.member_entity_id);
+				if (nestedColl) {
+					member.nestedMembers = buildMembers(nestedColl.id);
+					member.nestedExpanded = !!nestedExpandedMap[nestedColl.id];
+					member.nestedStatusCycle = getStatusCycle(nestedColl.id);
 				}
 			}
+			members.push(member);
+		}
+		return members;
+	}
+
+	// Build collection containers: collection nodes with their member entities
+	let collectionContainerMap = $derived.by(() => {
+		const map = new Map<string, { collectionId: number; members: ContainerMember[] }>();
+		for (const node of visibleNodes) {
+			if (node.entity_type !== 'collection') continue;
+			const members = buildMembers(node.entity_id);
 			if (members.length > 0) {
-				map.set(`collection:${coll.id}`, { collectionId: coll.id, members });
+				map.set(`collection:${node.entity_id}`, { collectionId: node.entity_id, members });
 			}
 		}
 		return map;
@@ -354,12 +381,18 @@
 	// Exclude the currently-dragged member so it pops out as a standalone card during drag
 	let containedMemberKeys = $derived.by(() => {
 		const s = new Set<string>();
-		for (const [, entry] of collectionContainerMap) {
-			for (const m of entry.members) {
+		function addMembers(members: ContainerMember[]) {
+			for (const m of members) {
 				const mk = `${m.entityType}:${m.entityId}`;
-				if (mk === draggingKey && !groupDragOrigPositions) continue; // dragging member solo
+				if (mk === draggingKey && !groupDragOrigPositions) continue;
 				s.add(mk);
+				if (m.nestedMembers) {
+					addMembers(m.nestedMembers);
+				}
 			}
+		}
+		for (const [, entry] of collectionContainerMap) {
+			addMembers(entry.members);
 		}
 		return s;
 	});
@@ -367,7 +400,7 @@
 	// Filtered containers for rendering — excludes dragged member from its container
 	let renderContainers = $derived.by(() => {
 		if (!draggingKey || groupDragOrigPositions) return collectionContainerMap;
-		const filtered = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
+		const filtered = new Map<string, { collectionId: number; members: ContainerMember[] }>();
 		for (const [k, entry] of collectionContainerMap) {
 			const filteredMembers = entry.members.filter(m => `${m.entityType}:${m.entityId}` !== draggingKey);
 			filtered.set(k, { ...entry, members: filteredMembers });
@@ -377,7 +410,10 @@
 
 	// Split visible nodes into containers (collections with members) and standalone
 	let containerCollectionKeys = $derived(new Set(collectionContainerMap.keys()));
-	let containerNodes = $derived(visibleNodes.filter(n => containerCollectionKeys.has(`${n.entity_type}:${n.entity_id}`)));
+	let containerNodes = $derived(visibleNodes.filter(n => {
+		const key = `${n.entity_type}:${n.entity_id}`;
+		return containerCollectionKeys.has(key) && !containedMemberKeys.has(key);
+	}));
 	let standaloneNodes = $derived(
 		visibleNodes.filter(n => {
 			const key = `${n.entity_type}:${n.entity_id}`;
@@ -394,7 +430,7 @@
 		for (const [collKey, entry] of collectionContainerMap) {
 			const existing = map.get(collKey);
 			if (existing) {
-				map.set(collKey, { ...existing, w: ccWidth(), h: ccHeight(entry.members.length, existing.collapsed) });
+				map.set(collKey, { ...existing, w: ccWidth(), h: ccHeightNested(entry.members, existing.collapsed) });
 			}
 		}
 		return map;
@@ -560,6 +596,65 @@
 		document.addEventListener('pointerup', handleDragUp);
 	}
 
+	function handleMemberPointerDown(containerCollectionId: number, memberType: string, memberId: number, e: PointerEvent) {
+		if (e.button !== 0) return;
+		e.stopPropagation();
+		e.preventDefault();
+
+		// Find the container node to compute a starting position for the member
+		const containerNode = nodeMap.get(`collection:${containerCollectionId}`);
+		if (!containerNode) return;
+
+		// Find the collection item id for later removal
+		const coll = $collections.find(c => c.id === containerCollectionId);
+		const item = coll?.items?.find((i: any) => i.member_entity_type === memberType && i.member_entity_id === memberId);
+
+		// Create a temporary board node at the container position so the standard drag works
+		const tempX = containerNode.x;
+		const tempY = containerNode.y;
+		boardNodes.update(nodes => {
+			// Remove any existing node for this entity first
+			const filtered = nodes.filter(n => !(n.entity_type === memberType && n.entity_id === memberId));
+			return [...filtered, {
+				id: -1,
+				entity_type: memberType,
+				entity_id: memberId,
+				x: tempX,
+				y: tempY,
+				collapsed: memberType === 'collection' ? false : true,
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+			} as any];
+		});
+
+		draggingFromCollection = {
+			collectionId: containerCollectionId,
+			memberType,
+			memberId,
+			itemId: item?.id,
+		};
+
+		// Now kick off the standard card drag
+		const key = `${memberType}:${memberId}`;
+		topZKey = key;
+		zCounter++;
+		selectedCards = new Set([key]);
+		dragStarted = false;
+		draggingCard = {
+			type: memberType,
+			id: memberId,
+			startX: e.clientX,
+			startY: e.clientY,
+			origX: tempX,
+			origY: tempY,
+		};
+		draggingKey = key;
+		groupDragOrigPositions = null;
+
+		document.addEventListener('pointermove', handleDragMove);
+		document.addEventListener('pointerup', handleDragUp);
+	}
+
 	function handleDragMove(e: PointerEvent) {
 		if (!draggingCard) return;
 
@@ -621,15 +716,19 @@
 			);
 
 			// Check for drop target: dragged card's center must land inside a visible card
-			const CARD_W = 150;
-			const CARD_H = 60;
-			const centerX = newX + CARD_W / 2;
-			const centerY = newY + CARD_H / 2;
+			const DEF_W = 150;
+			const DEF_H = 60;
+			const centerX = newX + DEF_W / 2;
+			const centerY = newY + DEF_H / 2;
 			let found: { type: string; id: number } | null = null;
 			for (const node of visibleNodes) {
 				if (node.entity_type === draggingCard.type && node.entity_id === draggingCard.id) continue;
-				if (centerX >= node.x && centerX <= node.x + CARD_W &&
-					centerY >= node.y && centerY <= node.y + CARD_H) {
+				const nk = `${node.entity_type}:${node.entity_id}`;
+				const aug = augmentedNodeMap.get(nk);
+				const nw = aug?.w ?? DEF_W;
+				const nh = aug?.h ?? DEF_H;
+				if (centerX >= node.x && centerX <= node.x + nw &&
+					centerY >= node.y && centerY <= node.y + nh) {
 					found = { type: node.entity_type, id: node.entity_id };
 					break;
 				}
@@ -650,6 +749,11 @@
 			// Click (no drag): if was part of multi-selection, select just this card
 			if (wasGroupDrag) {
 				selectedCards = new Set([`${type}:${id}`]);
+			}
+			// If this was a member click (no drag), remove the temp board node
+			if (draggingFromCollection) {
+				boardNodes.update(nodes => nodes.filter(n => !(n.entity_type === type && n.entity_id === id && (n as any).id === -1)));
+				draggingFromCollection = null;
 			}
 			draggingCard = null;
 			draggingKey = null;
@@ -682,13 +786,14 @@
 					for (const selKey of selectedCards) {
 						if (existingKeys.has(selKey)) continue;
 						const [sType, sIdStr] = selKey.split(':');
-						if (sType === 'collection') continue;
+						// Skip dropping a collection into itself
+						if (sType === 'collection' && Number(sIdStr) === dt.id) continue;
 						await addItem(dt.id, { member_entity_type: sType, member_entity_id: Number(sIdStr) });
 					}
 					// Delete board nodes — entities now render inside the collection container
 					for (const selKey of selectedCards) {
 						const [sType, sIdStr] = selKey.split(':');
-						if (sType === 'collection') continue;
+						if (sType === 'collection' && Number(sIdStr) === dt.id) continue;
 						try { await deleteBoardNode(sType, Number(sIdStr)); } catch {}
 					}
 					await loadCollections();
@@ -744,48 +849,95 @@
 				console.error('Failed to save group positions:', err);
 			}
 		} else if (dropTarget) {
-			// Drag-to-connect: snap card back and un-collapse both endpoints
 			const dt = dropTarget;
-			boardNodes.update(nodes =>
-				nodes.map(n => {
-					if (n.entity_type === type && n.entity_id === id)
-						return { ...n, x: origX, y: origY, collapsed: false };
-					if (n.entity_type === dt.type && n.entity_id === dt.id)
-						return { ...n, collapsed: false };
-					return n;
-				})
-			);
-
-			try {
-				const subjectTag = $tags.find(
-					t => t.entity_type === type && t.entity_id === id
-				);
-				if (subjectTag) {
-					await attachTag(subjectTag.id, dt.type, dt.id);
-					await loadTags();
-				}
-			} catch (err) {
-				console.error('Failed to attach tag:', err);
+			// If dragged from another collection, remove from source collection first
+			if (draggingFromCollection?.itemId) {
+				try { await removeItem(draggingFromCollection.itemId); } catch {}
 			}
-			await loadTriples();
+			if (dt.type === 'collection' && !(type === 'collection' && id === dt.id)) {
+				// Drop onto a collection: add as member and remove from board
+				try {
+					const coll = $collections.find(c => c.id === dt.id);
+					if (coll) {
+						const cat = $categories.find(c => c.id === coll.category_id);
+						if (cat && cat.member_entity_type !== '*') {
+							const wildcard = $categories.find(c => c.member_entity_type === '*');
+							if (wildcard) {
+								await updateCollection(dt.id, { category_id: wildcard.id } as any);
+							}
+						}
+						const existingKeys = new Set(
+							(coll.items || []).map((i: any) => `${i.member_entity_type}:${i.member_entity_id}`)
+						);
+						if (!existingKeys.has(`${type}:${id}`)) {
+							await addItem(dt.id, { member_entity_type: type, member_entity_id: id });
+						}
+						try { await deleteBoardNode(type, id); } catch {}
+						await loadCollections();
+						await loadBoard();
+					}
+				} catch (err) {
+					console.error('Failed to add to collection:', err);
+				}
+			} else {
+				// Drag-to-connect: snap card back and un-collapse both endpoints
+				boardNodes.update(nodes =>
+					nodes.map(n => {
+						if (n.entity_type === type && n.entity_id === id)
+							return { ...n, x: origX, y: origY, collapsed: false };
+						if (n.entity_type === dt.type && n.entity_id === dt.id)
+							return { ...n, collapsed: false };
+						return n;
+					})
+				);
 
-			try {
-				await upsertBoardNode({ entity_type: type, entity_id: id, x: origX, y: origY });
-				await updateBoardNode(type, id, { collapsed: false });
-				await updateBoardNode(dt.type, dt.id, { collapsed: false });
-			} catch {}
+				try {
+					const subjectTag = $tags.find(
+						t => t.entity_type === type && t.entity_id === id
+					);
+					if (subjectTag) {
+						await attachTag(subjectTag.id, dt.type, dt.id);
+						await loadTags();
+					}
+				} catch (err) {
+					console.error('Failed to attach tag:', err);
+				}
+				await loadTriples();
+
+				try {
+					await upsertBoardNode({ entity_type: type, entity_id: id, x: origX, y: origY });
+					await updateBoardNode(type, id, { collapsed: false });
+					await updateBoardNode(dt.type, dt.id, { collapsed: false });
+				} catch {}
+			}
 			dropTarget = null;
 		} else {
 			// Single card drag — save new position
 			const node = nodeMap.get(`${type}:${id}`);
 			if (node) {
 				try {
-					await upsertBoardNode({ entity_type: type, entity_id: id, x: node.x, y: node.y });
+					// If dragged out of a collection, remove from collection and persist board node
+					if (draggingFromCollection) {
+						const dfc = draggingFromCollection;
+						if (dfc.itemId) {
+							await removeItem(dfc.itemId);
+						}
+						// Persist board node — collections are restored expanded
+						const shouldExpand = type === 'collection';
+						await upsertBoardNode({ entity_type: type, entity_id: id, x: node.x, y: node.y });
+						if (shouldExpand) {
+							await updateBoardNode(type, id, { collapsed: false });
+						}
+						await Promise.all([loadCollections(), loadBoard()]);
+					} else {
+						await upsertBoardNode({ entity_type: type, entity_id: id, x: node.x, y: node.y });
+					}
 				} catch (err) {
 					console.error('Failed to save node position:', err);
 				}
 			}
 		}
+		draggingFromCollection = null;
 		draggingCard = null;
 		draggingKey = null;
 		groupDragOrigPositions = null;
@@ -1782,8 +1934,10 @@
 						onPointerDown={(e) => handleCardPointerDown(node.entity_type, node.entity_id, e)}
 						onDblClick={() => handleCardDblClick(node.entity_type, node.entity_id)}
 						onMemberDblClick={(type, id) => handleCardDblClick(type, id)}
+						onMemberPointerDown={(type, id, e) => handleMemberPointerDown(node.entity_id, type, id, e)}
 						onStatusChange={handleStatusChange}
 						onToggleCollapse={() => handleToggleCollapse(node.entity_type, node.entity_id)}
+						onNestedToggleCollapse={handleNestedToggleCollapse}
 						onContextMenu={(e) => handleCardContextMenu(node.entity_type, node.entity_id, e)}
 					/>
 				{/if}

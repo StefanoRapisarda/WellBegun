@@ -1,8 +1,9 @@
 <script lang="ts">
 	import {
-		MINI_CARD_W, MINI_CARD_H, MINI_GAP, COLS,
-		TITLE_BAR_H, CONTAINER_PADDING,
-		containerWidth, containerHeight
+		MINI_CARD_W, MINI_CARD_H, MINI_GAP,
+		TITLE_BAR_H, CONTAINER_PADDING, NESTED_INDENT,
+		containerWidth, containerHeightNested, buildVisualRows,
+		type ContainerMember,
 	} from './collectionLayout';
 	import EntityIcon from '$lib/components/shared/EntityIcon.svelte';
 
@@ -16,14 +17,6 @@
 		plan: '#6b8ba3',
 		collection: '#7c6f9e'
 	};
-
-	interface Member {
-		entityType: string;
-		entityId: number;
-		title: string;
-		status?: string;
-		itemId?: number;
-	}
 
 	let {
 		collectionId,
@@ -45,6 +38,7 @@
 		onMemberPointerDown,
 		onStatusChange,
 		onToggleCollapse,
+		onNestedToggleCollapse,
 		onContextMenu,
 	}: {
 		collectionId: number;
@@ -57,7 +51,7 @@
 		highlighted?: boolean;
 		pulsing?: boolean;
 		archived?: boolean;
-		members?: Member[];
+		members?: ContainerMember[];
 		statusCycle?: string[];
 		highlightedMemberKey?: string | null;
 		onPointerDown: (e: PointerEvent) => void;
@@ -66,36 +60,40 @@
 		onMemberPointerDown?: (type: string, id: number, e: PointerEvent) => void;
 		onStatusChange?: (itemId: number, newStatus: string) => void;
 		onToggleCollapse: () => void;
+		onNestedToggleCollapse?: (collectionId: number) => void;
 		onContextMenu?: (e: MouseEvent) => void;
 	} = $props();
 
-	function cycleStatus(member: Member) {
-		if (!member.itemId || !onStatusChange || statusCycle.length === 0) return;
-		const idx = statusCycle.indexOf(member.status ?? '');
-		const next = statusCycle[(idx + 1) % statusCycle.length];
+	function cycleStatus(member: ContainerMember, cycle: string[]) {
+		if (!member.itemId || !onStatusChange || cycle.length === 0) return;
+		const idx = cycle.indexOf(member.status ?? '');
+		const next = cycle[(idx + 1) % cycle.length];
 		onStatusChange(member.itemId, next);
 	}
 
 	let displayTitle = $derived(
-		title.length > 26 ? title.slice(0, 24) + '…' : title
+		title.length > 26 ? title.slice(0, 24) + '\u2026' : title
 	);
 
 	let w = $derived(containerWidth());
-	let h = $derived(containerHeight(members.length, collapsed));
+	let h = $derived(containerHeightNested(members, collapsed));
 
-	function memberX(index: number): number {
-		const col = index % COLS;
-		return CONTAINER_PADDING + col * (MINI_CARD_W + MINI_GAP);
+	let visualRows = $derived(buildVisualRows(members));
+
+	function rowX(row: { indent: number }): number {
+		return CONTAINER_PADDING + row.indent * NESTED_INDENT;
 	}
 
-	function memberY(index: number): number {
-		const row = Math.floor(index / COLS);
-		// No TITLE_BAR_H here — member-grid already starts below the title bar in DOM flow
-		return CONTAINER_PADDING + row * (MINI_CARD_H + MINI_GAP);
+	function rowY(index: number): number {
+		return CONTAINER_PADDING + index * (MINI_CARD_H + MINI_GAP);
+	}
+
+	function rowW(row: { indent: number }): number {
+		return MINI_CARD_W - row.indent * NESTED_INDENT;
 	}
 
 	function miniDisplayTitle(t: string): string {
-		return t.length > 28 ? t.slice(0, 26) + '…' : t;
+		return t.length > 28 ? t.slice(0, 26) + '\u2026' : t;
 	}
 
 	function statusClass(status?: string): string {
@@ -105,6 +103,10 @@
 		if (status === 'on_hold') return 'mini-status-on-hold';
 		if (status === 'cancelled') return 'mini-status-cancelled';
 		return 'mini-status-default';
+	}
+
+	function isNestedCollection(member: ContainerMember): boolean {
+		return member.entityType === 'collection' && !!member.nestedMembers;
 	}
 </script>
 
@@ -140,18 +142,20 @@
 		</button>
 	</div>
 
-	<!-- Member grid -->
-	{#if !collapsed && members.length > 0}
+	<!-- Member grid (flat list with visual rows) -->
+	{#if !collapsed && visualRows.length > 0}
 		<div class="member-grid">
-			{#each members as member, i (`${member.entityType}:${member.entityId}`)}
+			{#each visualRows as row, i (`${row.member.entityType}:${row.member.entityId}:${row.indent}`)}
+				{@const member = row.member}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="mini-card"
 					class:has-status={!!member.status}
 					class:member-highlighted={highlightedMemberKey === `${member.entityType}:${member.entityId}`}
-					style:left="{memberX(i)}px"
-					style:top="{memberY(i)}px"
-					style:width="{MINI_CARD_W}px"
+					class:sub-member={row.isSubMember}
+					style:left="{rowX(row)}px"
+					style:top="{rowY(i)}px"
+					style:width="{rowW(row)}px"
 					style:height="{MINI_CARD_H}px"
 					ondblclick={(e) => { e.stopPropagation(); onMemberDblClick(member.entityType, member.entityId); }}
 					onpointerdown={(e) => { e.stopPropagation(); onMemberPointerDown?.(member.entityType, member.entityId, e); }}
@@ -160,13 +164,25 @@
 					<EntityIcon type={member.entityType} size={10} />
 					<span class="mini-title">{miniDisplayTitle(member.title)}</span>
 					{#if member.status}
+						{@const cycle = row.isSubMember && row.parentCollectionId
+							? (members.find(m => m.entityId === row.parentCollectionId)?.nestedStatusCycle ?? statusCycle)
+							: statusCycle}
 						<button
 							class="mini-status {statusClass(member.status)}"
-							class:clickable={!!member.itemId && !!onStatusChange && statusCycle.length > 0}
-							onclick={(e) => { e.stopPropagation(); cycleStatus(member); }}
+							class:clickable={!!member.itemId && !!onStatusChange && cycle.length > 0}
+							onclick={(e) => { e.stopPropagation(); cycleStatus(member, cycle); }}
 							onpointerdown={(e) => e.stopPropagation()}
 							ondblclick={(e) => e.stopPropagation()}
 						>{member.status.replace('_', ' ')}</button>
+					{/if}
+					{#if isNestedCollection(member)}
+						<button
+							class="nested-expand-toggle"
+							class:is-expanded={member.nestedExpanded}
+							onpointerdown={(e) => e.stopPropagation()}
+							onclick={(e) => { e.stopPropagation(); onNestedToggleCollapse?.(member.entityId); }}
+							title={member.nestedExpanded ? 'Collapse' : 'Expand'}
+						>&#9656;</button>
 					{/if}
 				</div>
 			{/each}
@@ -290,6 +306,10 @@
 	.mini-card:hover {
 		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 	}
+	.mini-card.sub-member {
+		background: #faf8ff;
+		border-left: 2px solid rgba(124, 111, 158, 0.3);
+	}
 	.mini-card.member-highlighted {
 		box-shadow: 0 0 0 2px #3b82f6, 0 2px 8px rgba(59, 130, 246, 0.3);
 		background: #eff6ff;
@@ -310,6 +330,32 @@
 		flex: 1;
 		min-width: 0;
 	}
+
+	.nested-expand-toggle {
+		width: 14px;
+		height: 14px;
+		border-radius: 3px;
+		border: 1px solid #d1d5db;
+		background: white;
+		font-size: 0.5rem;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #9ca3af;
+		transition: transform 0.15s, background 0.15s;
+		padding: 0;
+		line-height: 1;
+		flex-shrink: 0;
+	}
+	.nested-expand-toggle:hover {
+		background: #f3f4f6;
+		color: #6b7280;
+	}
+	.nested-expand-toggle.is-expanded {
+		transform: rotate(90deg);
+	}
+
 	.mini-status {
 		font-size: 0.45rem;
 		padding: 1px 3px;

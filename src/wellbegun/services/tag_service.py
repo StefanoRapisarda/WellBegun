@@ -521,6 +521,7 @@ def seed_default_tags(db: Session) -> None:
         "note": ["Idea", "Quote", "Definition", "Question", "Feature", "Milestone", "Goal", "Motivation", "Outcome"],
         "log": ["Daily Log", "Progress", "Decision", "Issue", "Reflection", "Insight", "Workspace", "Work", "Travel", "Health"],
         "project": ["Personal", "Work", "SideProject", "Experiment"],
+        "plan": ["Learning Path"],
     }
     for category, tag_names in defaults_by_category.items():
         for name in tag_names:

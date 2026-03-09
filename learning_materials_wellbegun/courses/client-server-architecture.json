@@ -1,0 +1,261 @@
+{
+  "id": "course_001",
+  "slug": "client-server-architecture",
+  "title": "Client-Server Architecture",
+  "technology": "HTTP/Web Architecture",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "heard",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Client-server architecture is the fundamental design pattern behind WellBegun. The \"client\" is the Svelte frontend running in your browser -- it displays the UI, captures your input, and renders data. The \"server\" is the FastAPI backend running as a Python process -- it stores data, enforces business rules, and responds to requests from the client.\n\nAs a data scientist, you already use this pattern: when you call `requests.get(\"https://api.example.com/data\")`, your script is the client and the remote service is the server. WellBegun works the same way, except both sides live on your machine and you built both of them.",
+      "metadata": {
+        "key_takeaways": [
+          "Client-server separates presentation (what users see) from logic and storage (what the system does)",
+          "The frontend (client) and backend (server) communicate over HTTP using JSON",
+          "Each side can be developed, tested, and changed independently",
+          "The server is the single source of truth for data; the client is a view of that data"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### Request/Response Cycle\n\nEvery interaction in WellBegun follows the same cycle:\n\n1. **User action** -- you click \"Save\" on a note in the browser\n2. **Client sends request** -- the frontend sends an HTTP request (e.g., `POST /api/notes/`) with JSON data\n3. **Server processes** -- FastAPI receives the request, validates the data, writes to the database\n4. **Server sends response** -- FastAPI returns JSON (the saved note with its new `id`) and an HTTP status code\n5. **Client updates UI** -- the frontend reads the JSON response and updates the page\n\n### HTTP as the Transport Protocol\n\nThe client and server speak HTTP. In WellBegun, the frontend runs on `http://localhost:5173` (Vite dev server) and the backend runs on `http://localhost:8000` (Uvicorn/FastAPI). CORS middleware on the backend permits these cross-origin requests.\n\n### Separation of Concerns\n\n| **Frontend (Client)** | **Backend (Server)** |\n|------------------------|----------------------|\n| Renders HTML/CSS | Stores data in SQLite |\n| Captures user input | Validates incoming data |\n| Sends HTTP requests | Processes business logic |\n| Manages UI state (Svelte stores) | Manages data persistence (SQLAlchemy) |\n| Written in TypeScript/Svelte | Written in Python/FastAPI |\n\nThis separation means you could replace the Svelte frontend with a CLI tool, a mobile app, or a Jupyter notebook -- as long as it speaks HTTP and JSON, the backend does not care.\n\n### Stateless Communication\n\nEach HTTP request from the client is self-contained. The server does not remember previous requests. If the frontend needs a note, it sends `GET /api/notes/5` -- the server looks it up fresh from the database every time.",
+      "metadata": {
+        "key_takeaways": [
+          "Every interaction follows a request/response cycle: user action -> HTTP request -> server processing -> HTTP response -> UI update",
+          "HTTP is the transport protocol between the Svelte frontend (port 5173) and FastAPI backend (port 8000)",
+          "Frontend handles presentation; backend handles data, validation, and business logic",
+          "Each request is stateless and self-contained -- the server creates a fresh database session for every request"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun is split into two directory trees that mirror the client-server split:\n\n```\nWellBegun/\n  frontend/           <-- CLIENT (Svelte + TypeScript)\n    src/lib/api/      <-- HTTP calls to the server\n    src/lib/stores/   <-- UI state management\n    src/lib/components/ <-- Visual components\n  src/wellbegun/      <-- SERVER (Python + FastAPI)\n    routers/          <-- HTTP endpoint definitions\n    services/         <-- Business logic\n    models/           <-- Database table definitions\n    schemas/          <-- Request/response data shapes\n    main.py           <-- Wires everything together\n```\n\nThe frontend API layer is the bridge between client and server. The router prefix `/notes` combined with the app prefix `/api` forms the full URL `/api/notes/`.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "import type { Note } from '$lib/types';\n\nconst BASE = '/api/notes';\n\nexport async function getNotes(): Promise<Note[]> {\n\tconst res = await fetch(`${BASE}/`);\n\treturn res.json();\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:1-8",
+            "annotation": "The frontend API layer -- getNotes() sends GET /api/notes/ to the backend and parses the JSON response."
+          },
+          {
+            "language": "python",
+            "code": "router = APIRouter(prefix=\"/notes\", tags=[\"notes\"])\n\n@router.get(\"/\", response_model=list[NoteOut])\ndef list_notes(db: Session = Depends(get_db)):\n    return note_service.get_all(db)",
+            "file_reference": "src/wellbegun/routers/notes.py:8-13",
+            "annotation": "The backend handler -- receives GET /api/notes/, queries the database via the service layer, and returns JSON."
+          },
+          {
+            "language": "python",
+            "code": "app.include_router(notes.router, prefix=\"/api\")",
+            "file_reference": "src/wellbegun/main.py:448",
+            "annotation": "The main app registers the notes router under /api, so the full URL becomes /api/notes/."
+          },
+          {
+            "language": "python",
+            "code": "def get_db() -> Generator[Session]:\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()",
+            "file_reference": "src/wellbegun/database.py:16-21",
+            "annotation": "Each request gets a fresh database session that is automatically closed when the request completes -- enforcing statelessness."
+          },
+          {
+            "language": "python",
+            "code": "app.add_middleware(\n    CORSMiddleware,\n    allow_origins=settings.cors_origins,\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)",
+            "file_reference": "src/wellbegun/main.py:436-442",
+            "annotation": "CORS middleware allows the frontend (different port) to make requests to the backend."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: Creating a Note -- Full Round Trip\n\nTrace what happens when you create a note, from button click to database row and back.\n\n**Step 1: Frontend sends the request** -- `createNote()` serializes `{ title: \"My Note\", content: \"Some text\" }` into JSON and sends `POST /api/notes/`.\n\n**Step 2: Backend validates** -- FastAPI parses the JSON into a `NoteCreate` Pydantic schema. If validation fails, it returns 422 automatically.\n\n**Step 3: Service writes to database** -- `note_service.create()` creates a `Note` SQLAlchemy object, commits to the database, and returns it.\n\n**Step 4: Backend responds** -- FastAPI serializes the `Note` into JSON via the `NoteOut` schema and returns HTTP 201.\n\n**Step 5: Frontend updates** -- `res.json()` parses the response; the store is refreshed.\n\n### Example 2: The Server Does NOT Know the UI\n\nThe server has no idea what the UI looks like. All it receives is an HTTP request with JSON. You could create the same note from a Python script:\n\n```python\nimport requests\nrequests.post(\"http://localhost:8000/api/notes/\", json={\"title\": \"My Note\", \"content\": \"Some text\"})\n```\n\nThe backend would handle it identically. This is the power of client-server separation.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export async function createNote(data: { title: string; content?: string }): Promise<Note> {\n\tconst res = await fetch(`${BASE}/`, {\n\t\tmethod: 'POST',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:15-22",
+            "annotation": "Step 1: The frontend sends a POST request with JSON body to /api/notes/."
+          },
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)",
+            "file_reference": "src/wellbegun/routers/notes.py:24-26",
+            "annotation": "Step 2-3: The backend validates via NoteCreate, then delegates to the service layer."
+          },
+          {
+            "language": "python",
+            "code": "def create(\n    db: Session,\n    title: str,\n    content: str | None = None,\n) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:16-27",
+            "annotation": "Step 3: The service layer creates the database record, commits, and returns the object with its new id."
+          },
+          {
+            "language": "python",
+            "code": "class NoteOut(BaseModel):\n    id: int\n    title: str\n    content: str | None = None\n    is_active: bool\n    is_archived: bool\n    created_at: datetime\n    updated_at: datetime\n\n    model_config = {\"from_attributes\": True}",
+            "file_reference": "src/wellbegun/schemas/note.py:16-25",
+            "annotation": "Step 4: FastAPI serializes the Note object to JSON using this Pydantic schema before sending the HTTP 201 response."
+          },
+          {
+            "language": "typescript",
+            "code": "import { writable } from 'svelte/store';\nimport type { Note } from '$lib/types';\nimport { getNotes } from '$lib/api/notes';\n\nexport const notes = writable<Note[]>([]);\n\nexport async function loadNotes() {\n\ttry {\n\t\tnotes.set(await getNotes());\n\t} catch (e) {\n\t\tconsole.warn('Failed to load notes:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/notes.ts:1-13",
+            "annotation": "Step 5: The Svelte store holds the client-side data. After creating a note, loadNotes() refreshes the store from the server."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Trace a GET Request End-to-End\n\n**Task**: Starting from `frontend/src/lib/api/notes.ts`, trace a `GET /api/notes/5` request through every layer until the database query, and then back to the frontend. List each file and function involved.\n\n### Exercise 2: Identify the Client and Server in Another Context\n\n**Task**: Think of a tool you use daily (e.g., Jupyter notebooks, `pip install`, GitHub). Identify which part is the \"client\" and which is the \"server.\" What protocol do they use to communicate?\n\n### Exercise 3: What Would Break?\n\n**Task**: If you changed the backend router prefix from `\"/notes\"` to `\"/my-notes\"` in `src/wellbegun/routers/notes.py`, what would happen when the frontend tries to create a note? What would you need to change on the frontend side?",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Starting from frontend/src/lib/api/notes.ts, trace a GET /api/notes/5 request through every layer until the database query, and then back to the frontend. List each file and function involved.",
+            "hints": [
+              "Start with getNote(id) in frontend/src/lib/api/notes.ts (line 10-13).",
+              "Follow the route to get_note() in src/wellbegun/routers/notes.py (line 16-21), then to get_by_id() in src/wellbegun/services/note_service.py (line 12-13)."
+            ],
+            "solution_reference": "frontend/src/lib/api/notes.ts:10-13 -> src/wellbegun/routers/notes.py:16-21 -> src/wellbegun/services/note_service.py:12-13 -> src/wellbegun/models/note.py -> src/wellbegun/schemas/note.py:16-25 -> back to frontend"
+          },
+          {
+            "task": "Think of a tool you use daily (e.g., Jupyter notebooks, pip install, GitHub). Identify which part is the client and which is the server. What protocol do they use to communicate?",
+            "hints": [
+              "For Jupyter: the browser is the client, the kernel is the server.",
+              "For pip: the pip CLI is the client, PyPI is the server, and they use HTTPS."
+            ],
+            "solution_reference": "Open-ended -- any valid client-server identification is correct."
+          },
+          {
+            "task": "If you changed the backend router prefix from /notes to /my-notes in src/wellbegun/routers/notes.py, what would happen? What would you need to change on the frontend?",
+            "hints": [
+              "The frontend calls fetch('/api/notes/') -- look at the BASE constant in frontend/src/lib/api/notes.ts.",
+              "The URL is a contract between client and server."
+            ],
+            "solution_reference": "frontend/src/lib/api/notes.ts:3 -- change BASE from '/api/notes' to '/api/my-notes'"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of client-server architecture as implemented in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "In WellBegun, which part is the 'client' and which is the 'server'?",
+            "options": [
+              "The Svelte frontend is the server; the FastAPI backend is the client",
+              "The Svelte frontend is the client; the FastAPI backend is the server",
+              "Both are servers that talk to each other",
+              "The SQLite database is the server; everything else is the client"
+            ],
+            "correct_index": 1,
+            "explanation": "The Svelte frontend initiates requests (client); the FastAPI backend listens, processes, and responds (server)."
+          },
+          {
+            "question": "Why does each backend endpoint receive a fresh database session via Depends(get_db)?",
+            "options": [
+              "Python does not support global variables",
+              "It enforces statelessness -- each request is independent and self-contained",
+              "SQLite can only handle one session at a time",
+              "It is required by the FastAPI framework with no alternative"
+            ],
+            "correct_index": 1,
+            "explanation": "A fresh session per request means no leftover state from a previous request can leak into the next one. This is visible in src/wellbegun/database.py:16-21."
+          },
+          {
+            "question": "What allows the frontend (port 5173) to make HTTP requests to the backend (port 8000)?",
+            "options": [
+              "They share the same port in production",
+              "CORS middleware configured on the backend",
+              "The frontend proxies all requests through Node.js",
+              "HTTP requests do not have port restrictions"
+            ],
+            "correct_index": 1,
+            "explanation": "CORS middleware is configured in src/wellbegun/main.py:436-442. Without it, the browser would block cross-origin requests as a security measure."
+          },
+          {
+            "question": "If you wanted to create a note without the Svelte frontend, which approach would work?",
+            "options": [
+              "Only inserting directly into the SQLite file",
+              "Only sending a POST request to http://localhost:8000/api/notes/ from any HTTP client",
+              "Only calling note_service.create() from a Python script",
+              "Both sending an HTTP POST and calling note_service.create() directly"
+            ],
+            "correct_index": 3,
+            "explanation": "The HTTP interface (like the frontend uses) and the service layer (direct Python import) both work. This demonstrates that client-server architecture separates interface from implementation."
+          },
+          {
+            "question": "What is the main advantage of separating frontend and backend into distinct applications?",
+            "options": [
+              "It makes the code run faster",
+              "Each side can be developed, tested, deployed, and replaced independently",
+              "It uses less memory than a single application",
+              "It is required by Python and JavaScript to be in separate processes"
+            ],
+            "correct_index": 1,
+            "explanation": "You could swap the Svelte frontend for React, or replace SQLite with PostgreSQL, without rewriting the other side -- as long as the HTTP/JSON contract is maintained."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of client-server architecture.",
+      "metadata": {
+        "links": [
+          {
+            "title": "MDN: Client-Server Overview",
+            "url": "https://developer.mozilla.org/en-US/docs/Learn/Server-side/First_steps/Client-Server_overview",
+            "type": "official-docs"
+          },
+          {
+            "title": "FastAPI Tutorial: First Steps",
+            "url": "https://fastapi.tiangolo.com/tutorial/first-steps/",
+            "type": "tutorial"
+          },
+          {
+            "title": "MDN: Using Fetch",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch",
+            "type": "official-docs"
+          },
+          {
+            "title": "Wikipedia: Client-Server Model",
+            "url": "https://en.wikipedia.org/wiki/Client%E2%80%93server_model",
+            "type": "reference"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,423 @@
+{
+  "id": "course_003",
+  "slug": "sqlalchemy",
+  "title": "SQLAlchemy ORM",
+  "technology": "SQLAlchemy",
+  "category": "library",
+  "difficulty": "beginner",
+  "estimated_minutes": 25,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "You have used pandas DataFrames and are familiar with Python classes. You haven't used an ORM or SQLAlchemy before.",
+  "relevance_to_project": "SQLAlchemy is the data layer of WellBegun. Every database table (entities, collections, knowledge triples, etc.) is defined as a SQLAlchemy model, and all CRUD operations go through SQLAlchemy Sessions in the service layer.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "If you have used pandas DataFrames, think of SQLAlchemy models as DataFrames with stricter column types that are backed by a real database. Each Python class is a table, each instance is a row, and each attribute is a column. Instead of `df['name']`, you write `model.name`, and instead of `pd.read_csv()`, you ask a Session to query the database for you.",
+      "metadata": {
+        "key_takeaways": [
+          "SQLAlchemy maps Python classes to database tables (the ORM pattern)",
+          "Column types (String, Integer, Boolean, DateTime) mirror Python types",
+          "Relationships define how tables connect (like foreign keys in a spreadsheet)",
+          "The Session manages transactions: add, flush, commit, refresh"
+        ]
+      }
+    },
+    {
+      "id": "concept-models",
+      "title": "Models as Python Classes",
+      "type": "concept",
+      "order": 2,
+      "content_md": "Every database table is represented by a Python class that inherits from a base class. The `__tablename__` attribute sets the SQL table name. `Mapped[type]` is the modern SQLAlchemy 2.x type annotation syntax that tells both Python type-checkers and SQLAlchemy what type the column holds. `mapped_column()` configures each column with its SQL type, primary key status, nullability, and defaults.\n\nThink of `__tablename__` as the CSV filename, `mapped_column` as dtype specifications in `pd.read_csv()`, and `nullable=False` as ensuring a column has no NaN values.",
+      "metadata": {
+        "code_examples": [
+          {
+            "file": "src/wellbegun/models/base.py",
+            "lines": "1-5",
+            "description": "The DeclarativeBase class that all models inherit from",
+            "snippet": "from sqlalchemy.orm import DeclarativeBase\n\nclass Base(DeclarativeBase):\n    pass"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "12-32",
+            "description": "The Category model showing complete table definition with Mapped types, mapped_column, and relationships",
+            "snippet": "class Category(Base):\n    __tablename__ = \"categories\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)\n    display_name: Mapped[str] = mapped_column(String(100), nullable=False)\n    member_entity_type: Mapped[str] = mapped_column(String(30), nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )\n    updated_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False\n    )"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-column-types",
+      "title": "Column Types and Constraints",
+      "type": "concept",
+      "order": 3,
+      "content_md": "SQLAlchemy provides SQL column types that map to Python types: `Integer` to `int`, `String(n)` to `str` with max length, `Text` to `str` with unlimited length, `Boolean` to `bool`, `DateTime` to `datetime`. Constraints enforce data integrity rules at the database level. `UniqueConstraint` prevents duplicate combinations of column values.\n\n| SQLAlchemy Type | Python Type | Examples |\n|----------------|-------------|----------|\n| Integer | int | id, position, category_id |\n| String(n) | str | slug (50), title (255) |\n| Text | str | notes, description (unlimited) |\n| Boolean | bool | is_default, is_active, is_archived |\n| DateTime | datetime | created_at, updated_at |",
+      "metadata": {
+        "code_examples": [
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "74-100",
+            "description": "CollectionItem model demonstrating Integer, String, Text, Boolean, DateTime column types and a three-column UniqueConstraint",
+            "snippet": "class CollectionItem(Base):\n    __tablename__ = \"collection_items\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    collection_id: Mapped[int] = mapped_column(\n        Integer, ForeignKey(\"entities.id\"), nullable=False\n    )\n    member_entity_type: Mapped[str] = mapped_column(String(30), nullable=False)\n    member_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)\n    status: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    notes: Mapped[str | None] = mapped_column(Text, nullable=True)\n    header: Mapped[str | None] = mapped_column(String(255), nullable=True)\n    ...\n\n    __table_args__ = (\n        UniqueConstraint(\"collection_id\", \"member_entity_type\", \"member_entity_id\"),\n    )"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "48-50",
+            "description": "Two-column UniqueConstraint on CategoryStatus preventing duplicate (category_id, value) pairs",
+            "snippet": "__table_args__ = (\n    UniqueConstraint(\"category_id\", \"value\"),\n)"
+          },
+          {
+            "file": "src/wellbegun/models/knowledge_triple.py",
+            "lines": "11-16",
+            "description": "Named four-column UniqueConstraint on KnowledgeTriple",
+            "snippet": "__table_args__ = (\n    UniqueConstraint(\n        \"subject_type\", \"subject_id\", \"object_type\", \"object_id\",\n        name=\"uq_knowledge_triple\",\n    ),\n)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-relationships",
+      "title": "Relationships",
+      "type": "concept",
+      "order": 4,
+      "content_md": "Relationships define how tables are connected. `ForeignKey` declares the database-level link between columns. `relationship()` creates a Python-level attribute that loads related objects. `back_populates` creates a two-way link so both sides stay in sync. `cascade='all, delete-orphan'` means deleting the parent deletes children, and removing a child from the collection deletes it. `order_by` controls default ordering when accessing the relationship list.\n\nRelationships are like doing `pd.merge(categories_df, statuses_df, on='category_id')`, except SQLAlchemy does it lazily (only when you access the attribute) and keeps both directions linked automatically.",
+      "metadata": {
+        "code_examples": [
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "26-32",
+            "description": "Category's one-to-many relationships to CategoryStatus (with cascade and order_by) and Collection",
+            "snippet": "statuses: Mapped[list[\"CategoryStatus\"]] = relationship(\n    \"CategoryStatus\", back_populates=\"category\", cascade=\"all, delete-orphan\",\n    order_by=\"CategoryStatus.position\",\n)\ncollections: Mapped[list[\"Collection\"]] = relationship(\n    \"Collection\", back_populates=\"category\",\n)"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "39-46",
+            "description": "CategoryStatus showing the ForeignKey column and the reverse side of the relationship",
+            "snippet": "category_id: Mapped[int] = mapped_column(\n    Integer, ForeignKey(\"categories.id\"), nullable=False\n)\nvalue: Mapped[str] = mapped_column(String(50), nullable=False)\nposition: Mapped[int] = mapped_column(Integer, default=0, nullable=False)\nis_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n\ncategory: Mapped[\"Category\"] = relationship(\"Category\", back_populates=\"statuses\")"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "64-67",
+            "description": "Collection's one-to-many relationship to CollectionItem with cascade and ordering",
+            "snippet": "items: Mapped[list[\"CollectionItem\"]] = relationship(\n    \"CollectionItem\", back_populates=\"collection\", cascade=\"all, delete-orphan\",\n    order_by=\"CollectionItem.position\",\n)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-inheritance",
+      "title": "Inheritance (Polymorphic Identity)",
+      "type": "concept",
+      "order": 5,
+      "content_md": "SQLAlchemy supports table inheritance so that different entity types can share a common table while having specialized tables. The parent class uses `polymorphic_on` to specify the discriminator column and `polymorphic_identity` to declare its own type string. Child classes inherit all parent columns and declare their own `polymorphic_identity`. When querying, SQLAlchemy uses the discriminator column to decide which Python class to instantiate.\n\nImagine a single DataFrame with a 'type' column. Instead of filtering with `df[df.type == 'collection']` and remembering which columns are relevant, SQLAlchemy gives you a proper Python class with only the attributes that matter.",
+      "metadata": {
+        "code_examples": [
+          {
+            "file": "src/wellbegun/models/entity.py",
+            "lines": "9-28",
+            "description": "The Entity base class with polymorphic_on discriminator, defining shared columns (title, description, is_active, etc.)",
+            "snippet": "class Entity(Base):\n    __tablename__ = \"entities\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n    description: Mapped[str | None] = mapped_column(Text, nullable=True)\n    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    ...\n\n    __mapper_args__ = {\n        \"polymorphic_on\": \"entity_type\",\n        \"polymorphic_identity\": \"entity\",\n    }"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "53-71",
+            "description": "Collection inheriting from Entity with its own polymorphic_identity, ForeignKey back to entities.id, and additional relationships",
+            "snippet": "class Collection(Entity):\n    __tablename__ = \"collections\"\n\n    id: Mapped[int] = mapped_column(\n        Integer, ForeignKey(\"entities.id\"), primary_key=True\n    )\n    category_id: Mapped[int] = mapped_column(\n        Integer, ForeignKey(\"categories.id\"), nullable=False\n    )\n\n    category: Mapped[\"Category\"] = relationship(\"Category\", back_populates=\"collections\")\n    items: Mapped[list[\"CollectionItem\"]] = relationship(\n        \"CollectionItem\", back_populates=\"collection\", cascade=\"all, delete-orphan\",\n        order_by=\"CollectionItem.position\",\n    )\n\n    __mapper_args__ = {\n        \"polymorphic_identity\": \"collection\",\n    }"
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-session",
+      "title": "Session Operations (CRUD)",
+      "type": "concept",
+      "order": 6,
+      "content_md": "The Session is your connection to the database. All reads and writes go through it. `db.add()` stages an object for insertion. `db.flush()` sends the SQL to the database within the current transaction (so auto-generated IDs become available). `db.commit()` finalizes the transaction permanently. `db.refresh()` reloads the object from the database to pick up any DB-generated values. Queries use `db.query(Model)` with chained `.filter()`, `.order_by()`, `.options()`, `.all()`, and `.first()`.\n\n| Step | Description | Analogy |\n|------|-------------|---------|\n| `db.add(obj)` | Stage the object for insertion | Like git add |\n| `db.flush()` | Send SQL to database within current transaction; auto-generated IDs now available | Like git stage |\n| `db.commit()` | Finalize transaction, make changes permanent | Like git commit |\n| `db.refresh(obj)` | Reload object from database to pick up DB-generated values | Like git pull after push |",
+      "metadata": {
+        "code_examples": [
+          {
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "30-46",
+            "description": "The create pattern: instantiate, add, flush (to get id), commit, refresh",
+            "snippet": "def create(\n    db: Session,\n    title: str,\n    category_id: int,\n    description: str | None = None,\n) -> Collection:\n    collection = Collection(\n        title=title,\n        category_id=category_id,\n        description=description,\n    )\n    db.add(collection)\n    db.flush()\n    create_entity_tag(db, title, \"collection\", \"collection\", collection.id)\n    db.commit()\n    db.refresh(collection)\n    return collection"
+          },
+          {
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "10-18",
+            "description": "Query with joinedload, conditional filter, and order_by",
+            "snippet": "def get_all(db: Session, category_id: int | None = None) -> list[Collection]:\n    q = (\n        db.query(Collection)\n        .options(joinedload(Collection.items))\n        .order_by(Collection.created_at.desc())\n    )\n    if category_id is not None:\n        q = q.filter(Collection.category_id == category_id)\n    return q.all()"
+          },
+          {
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "18-33",
+            "description": "Query using or_() to find triples where entity appears as subject OR object",
+            "snippet": "def get_triples_for_entity(\n    db: Session, entity_type: str, entity_id: int\n) -> list[KnowledgeTriple]:\n    return (\n        db.query(KnowledgeTriple)\n        .filter(\n            or_(\n                (KnowledgeTriple.subject_type == entity_type)\n                & (KnowledgeTriple.subject_id == entity_id),\n                (KnowledgeTriple.object_type == entity_type)\n                & (KnowledgeTriple.object_id == entity_id),\n            )\n        )\n        .order_by(KnowledgeTriple.created_at.desc())\n        .all()\n    )"
+          },
+          {
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "36-74",
+            "description": "The upsert pattern: query for existing, update if found, create if not",
+            "snippet": "def create_triple(\n    db: Session,\n    subject_type: str, subject_id: int,\n    predicate: str,\n    object_type: str, object_id: int,\n) -> KnowledgeTriple:\n    existing = (\n        db.query(KnowledgeTriple)\n        .filter(\n            KnowledgeTriple.subject_type == subject_type,\n            KnowledgeTriple.subject_id == subject_id,\n            KnowledgeTriple.object_type == object_type,\n            KnowledgeTriple.object_id == object_id,\n        )\n        .first()\n    )\n    if existing:\n        if existing.predicate != predicate:\n            existing.predicate = predicate\n            db.flush()\n        return existing\n    triple = KnowledgeTriple(\n        subject_type=subject_type,\n        subject_id=subject_id,\n        predicate=predicate,\n        object_type=object_type,\n        object_id=object_id,\n    )\n    db.add(triple)\n    db.commit()\n    db.refresh(triple)\n    return triple"
+          },
+          {
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "49-60",
+            "description": "The update pattern: fetch, set attributes in a loop, commit, refresh",
+            "snippet": "def update(db: Session, collection_id: int, **kwargs) -> Collection | None:\n    collection = get_by_id(db, collection_id)\n    if not collection:\n        return None\n    for key, value in kwargs.items():\n        if hasattr(collection, key):\n            setattr(collection, key, value)\n    if \"title\" in kwargs and kwargs[\"title\"] is not None:\n        update_entity_tag(db, \"collection\", collection_id, kwargs[\"title\"])\n    db.commit()\n    db.refresh(collection)\n    return collection"
+          },
+          {
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "63-71",
+            "description": "The delete pattern: fetch, clean up related data, delete, commit",
+            "snippet": "def delete(db: Session, collection_id: int) -> bool:\n    collection = get_by_id(db, collection_id)\n    if not collection:\n        return False\n    delete_entity_tag(db, \"collection\", collection_id)\n    delete_entity_graph_data(db, \"collection\", collection_id)\n    db.delete(collection)\n    db.commit()\n    return True"
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 7,
+      "content_md": "WellBegun follows a layered architecture: Routers (API endpoints) call Services (business logic) which use Models (SQLAlchemy classes) to interact with the Database (SQLite). The Session is created by FastAPI's dependency injection system and passed to service functions as the first parameter (`db: Session`).\n\n```\nRouter (API endpoint) --> Service (business logic, receives Session) --> Model (SQLAlchemy class, defines schema) --> Database (SQLite file)\n```\n\n### Key Files\n\n- **`src/wellbegun/models/base.py`** (lines 1-5) -- DeclarativeBase that all models inherit from\n- **`src/wellbegun/models/entity.py`** (lines 1-28) -- Polymorphic parent class for all entity types (Project, Activity, Collection, Note, etc.)\n- **`src/wellbegun/models/collection.py`** (lines 1-101) -- Defines Category, CategoryStatus, Collection, and CollectionItem models with relationships and constraints\n- **`src/wellbegun/models/knowledge_triple.py`** (lines 1-27) -- Defines the KnowledgeTriple model for semantic relationships between entities\n- **`src/wellbegun/services/collection_service.py`** (lines 1-231) -- Full CRUD operations for collections and collection items, demonstrating query building, create/update/delete patterns\n- **`src/wellbegun/services/knowledge_service.py`** (lines 1-468) -- CRUD for knowledge triples, demonstrating or_ filters, upsert pattern, and graph population logic",
+      "metadata": {
+        "key_files": [
+          {
+            "file": "src/wellbegun/models/base.py",
+            "lines": "1-5",
+            "role": "DeclarativeBase that all models inherit from"
+          },
+          {
+            "file": "src/wellbegun/models/entity.py",
+            "lines": "1-28",
+            "role": "Polymorphic parent class for all entity types (Project, Activity, Collection, Note, etc.)"
+          },
+          {
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "1-101",
+            "role": "Defines Category, CategoryStatus, Collection, and CollectionItem models with relationships and constraints"
+          },
+          {
+            "file": "src/wellbegun/models/knowledge_triple.py",
+            "lines": "1-27",
+            "role": "Defines the KnowledgeTriple model for semantic relationships between entities"
+          },
+          {
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "1-231",
+            "role": "Full CRUD operations for collections and collection items, demonstrating query building, create/update/delete patterns"
+          },
+          {
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "1-468",
+            "role": "CRUD for knowledge triples, demonstrating or_ filters, upsert pattern, and graph population logic"
+          }
+        ]
+      }
+    },
+    {
+      "id": "example-collection-crud",
+      "title": "Tracing a Collection from Model to CRUD",
+      "type": "example",
+      "order": 8,
+      "content_md": "Walk through the full lifecycle of a Collection: how the model defines the schema, and how the service performs create, read, update, and delete operations.\n\n### Step 1: Open the Collection model and identify what it inherits from Entity\n\nOpen `src/wellbegun/models/collection.py` (lines 53-71). Collection inherits from Entity, gaining title, description, is_active, is_archived, created_at, updated_at. It adds category_id and relationships to Category and CollectionItem. Its polymorphic_identity is 'collection'.\n\n### Step 2: Read the create() function to see how a Collection is persisted\n\nOpen `src/wellbegun/services/collection_service.py` (lines 30-46). A new Collection is instantiated with keyword arguments, added to the session, flushed to get its auto-generated id, then an entity tag is created using that id, and finally the transaction is committed and the object refreshed.\n\n### Step 3: Read get_all() to see how Collections are queried\n\nOpen `src/wellbegun/services/collection_service.py` (lines 10-18). The query uses `joinedload(Collection.items)` to eagerly fetch related items in a single JOIN. Filters are chained conditionally. The result is ordered by created_at descending.\n\n### Step 4: Read update() to see how attributes are modified\n\nOpen `src/wellbegun/services/collection_service.py` (lines 49-60). The function fetches the object, loops over kwargs using setattr to set each attribute, then commits and refreshes. SQLAlchemy tracks the changes automatically and generates the UPDATE SQL.\n\n### Step 5: Read delete() to see how cleanup and deletion work\n\nOpen `src/wellbegun/services/collection_service.py` (lines 63-71). Before deleting, related entity tags and graph data are cleaned up. Then `db.delete()` marks the object, and `db.commit()` makes it permanent. The `cascade='all, delete-orphan'` on the items relationship means CollectionItem rows are deleted automatically.",
+      "metadata": {
+        "steps": [
+          {
+            "instruction": "Open the Collection model and identify what it inherits from Entity",
+            "file": "src/wellbegun/models/collection.py",
+            "lines": "53-71",
+            "observation": "Collection inherits from Entity, gaining title, description, is_active, is_archived, created_at, updated_at. It adds category_id and relationships to Category and CollectionItem. Its polymorphic_identity is 'collection'."
+          },
+          {
+            "instruction": "Read the create() function to see how a Collection is persisted",
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "30-46",
+            "observation": "A new Collection is instantiated with keyword arguments, added to the session, flushed to get its auto-generated id, then an entity tag is created using that id, and finally the transaction is committed and the object refreshed."
+          },
+          {
+            "instruction": "Read get_all() to see how Collections are queried",
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "10-18",
+            "observation": "The query uses joinedload(Collection.items) to eagerly fetch related items in a single JOIN. Filters are chained conditionally. The result is ordered by created_at descending."
+          },
+          {
+            "instruction": "Read update() to see how attributes are modified",
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "49-60",
+            "observation": "The function fetches the object, loops over kwargs using setattr to set each attribute, then commits and refreshes. SQLAlchemy tracks the changes automatically and generates the UPDATE SQL."
+          },
+          {
+            "instruction": "Read delete() to see how cleanup and deletion work",
+            "file": "src/wellbegun/services/collection_service.py",
+            "lines": "63-71",
+            "observation": "Before deleting, related entity tags and graph data are cleaned up. Then db.delete() marks the object, and db.commit() makes it permanent. The cascade='all, delete-orphan' on the items relationship means CollectionItem rows are deleted automatically."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example-upsert",
+      "title": "Querying with or_ and the Upsert Pattern",
+      "type": "example",
+      "order": 9,
+      "content_md": "Walk through the KnowledgeTriple service to understand complex filtering with `or_()` and the upsert (create-or-update) pattern.\n\n### Step 1: Read the KnowledgeTriple model to understand its structure and constraint\n\nOpen `src/wellbegun/models/knowledge_triple.py` (lines 9-27). Each triple has subject (type + id), predicate, and object (type + id). The UniqueConstraint on (subject_type, subject_id, object_type, object_id) means only one triple can exist between any two specific entities.\n\n### Step 2: Read get_triples_for_entity() to see the or_ filter pattern\n\nOpen `src/wellbegun/services/knowledge_service.py` (lines 18-33). `or_()` combines two conditions: entity as subject OR entity as object. Each condition uses `&` to combine type and id checks. This translates to SQL: `WHERE (subject_type = X AND subject_id = Y) OR (object_type = X AND object_id = Y)`.\n\n### Step 3: Read create_triple() to see the upsert pattern\n\nOpen `src/wellbegun/services/knowledge_service.py` (lines 36-74). First, query for an existing triple matching the same subject and object. If found and the predicate differs, update just the predicate and flush. If not found, create a new triple. This avoids violating the UniqueConstraint while still allowing predicate updates.\n\n### Step 4: Read delete_triple() to see cascade cleanup during deletion\n\nOpen `src/wellbegun/services/knowledge_service.py` (lines 135-156). Before deleting the triple, the function finds and removes the corresponding EntityTag link. This keeps the tag system and the knowledge graph in sync. Then `db.delete()` and `db.commit()` remove the triple itself.",
+      "metadata": {
+        "steps": [
+          {
+            "instruction": "Read the KnowledgeTriple model to understand its structure and constraint",
+            "file": "src/wellbegun/models/knowledge_triple.py",
+            "lines": "9-27",
+            "observation": "Each triple has subject (type + id), predicate, and object (type + id). The UniqueConstraint on (subject_type, subject_id, object_type, object_id) means only one triple can exist between any two specific entities."
+          },
+          {
+            "instruction": "Read get_triples_for_entity() to see the or_ filter pattern",
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "18-33",
+            "observation": "or_() combines two conditions: entity as subject OR entity as object. Each condition uses & to combine type and id checks. This translates to SQL: WHERE (subject_type = X AND subject_id = Y) OR (object_type = X AND object_id = Y)."
+          },
+          {
+            "instruction": "Read create_triple() to see the upsert pattern",
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "36-74",
+            "observation": "First, query for an existing triple matching the same subject and object. If found and the predicate differs, update just the predicate and flush. If not found, create a new triple. This avoids violating the UniqueConstraint while still allowing predicate updates."
+          },
+          {
+            "instruction": "Read delete_triple() to see cascade cleanup during deletion",
+            "file": "src/wellbegun/services/knowledge_service.py",
+            "lines": "135-156",
+            "observation": "Before deleting the triple, the function finds and removes the corresponding EntityTag link. This keeps the tag system and the knowledge graph in sync. Then db.delete() and db.commit() remove the triple itself."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 10,
+      "content_md": "### Exercise 1: Read the CollectionItem model\n\nOpen `src/wellbegun/models/collection.py`, lines 74-101. Identify all column types used (Integer, String, Text, Boolean, DateTime) and explain what the UniqueConstraint on lines 98-100 prevents.\n\n**Difficulty:** beginner\n\n**Hints:**\n- Count each distinct column type used across all `mapped_column()` calls\n- The UniqueConstraint has three columns -- what would happen if you tried to add the same entity to the same collection twice?\n\n---\n\n### Exercise 2: Trace the add_item function\n\nRead `src/wellbegun/services/collection_service.py`, lines 117-178. List every database operation (query, add, flush, commit, refresh) in order and explain why each one is needed at that point in the flow.\n\n**Difficulty:** intermediate\n\n**Hints:**\n- Start by identifying every call to `db.something()` or a function that takes db as a parameter\n- Pay attention to where `flush()` is used versus `commit()` -- why does the function flush on line 140 but commit on line 163?\n\n---\n\n### Exercise 3: Write a hypothetical query\n\nUsing the patterns from `collection_service.py` and `knowledge_service.py`, write a function that finds all CollectionItem rows where status is not null, ordered by position ascending. Use `db.query()`, `.filter()`, and `.order_by()`.\n\n**Difficulty:** beginner\n\n**Hints:**\n- Use `CollectionItem.status.isnot(None)` for the filter\n- Use `CollectionItem.position` for the order_by (ascending is the default)\n\n---\n\n### Exercise 4: Compare create() and create_triple()\n\nThe `create()` function in `collection_service.py` always creates a new row. The `create_triple()` function in `knowledge_service.py` checks for an existing row first (the upsert pattern). Explain why `create_triple()` needs the upsert pattern while `create()` does not. Consider the constraints on each table.\n\n**Difficulty:** intermediate\n\n**Hints:**\n- Look at the UniqueConstraint on KnowledgeTriple (`knowledge_triple.py` lines 11-16)\n- Consider when `create_triple()` is called -- it can be called repeatedly for the same subject/object pair with different predicates\n- Collection has no such uniqueness constraint on title or category_id, so every `create()` call produces a genuinely new row",
+      "metadata": {
+        "exercises": [
+          {
+            "title": "Read the CollectionItem model",
+            "description": "Open src/wellbegun/models/collection.py, lines 74-101. Identify all column types used (Integer, String, Text, Boolean, DateTime) and explain what the UniqueConstraint on lines 98-100 prevents.",
+            "difficulty": "beginner",
+            "reference_file": "src/wellbegun/models/collection.py",
+            "reference_lines": "74-101",
+            "hints": [
+              "Count each distinct column type used across all mapped_column() calls",
+              "The UniqueConstraint has three columns -- what would happen if you tried to add the same entity to the same collection twice?"
+            ]
+          },
+          {
+            "title": "Trace the add_item function",
+            "description": "Read src/wellbegun/services/collection_service.py, lines 117-178. List every database operation (query, add, flush, commit, refresh) in order and explain why each one is needed at that point in the flow.",
+            "difficulty": "intermediate",
+            "reference_file": "src/wellbegun/services/collection_service.py",
+            "reference_lines": "117-178",
+            "hints": [
+              "Start by identifying every call to db.something() or a function that takes db as a parameter",
+              "Pay attention to where flush() is used versus commit() -- why does the function flush on line 140 but commit on line 163?"
+            ]
+          },
+          {
+            "title": "Write a hypothetical query",
+            "description": "Using the patterns from collection_service.py and knowledge_service.py, write a function that finds all CollectionItem rows where status is not null, ordered by position ascending. Use db.query(), .filter(), and .order_by().",
+            "difficulty": "beginner",
+            "reference_file": "src/wellbegun/services/collection_service.py",
+            "reference_lines": "10-27",
+            "hints": [
+              "Use CollectionItem.status.isnot(None) for the filter",
+              "Use CollectionItem.position for the order_by (ascending is the default)"
+            ]
+          },
+          {
+            "title": "Compare create() and create_triple()",
+            "description": "The create() function in collection_service.py always creates a new row. The create_triple() function in knowledge_service.py checks for an existing row first (the upsert pattern). Explain why create_triple() needs the upsert pattern while create() does not. Consider the constraints on each table.",
+            "difficulty": "intermediate",
+            "reference_file": "src/wellbegun/services/knowledge_service.py",
+            "reference_lines": "36-74",
+            "hints": [
+              "Look at the UniqueConstraint on KnowledgeTriple (knowledge_triple.py lines 11-16)",
+              "Consider when create_triple() is called -- it can be called repeatedly for the same subject/object pair with different predicates",
+              "Collection has no such uniqueness constraint on title or category_id, so every create() call produces a genuinely new row"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 11,
+      "content_md": "Test your understanding of SQLAlchemy ORM concepts as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What does mapped_column(String(50), unique=True, nullable=False) mean?",
+            "answer": "A string column with a maximum of 50 characters, where every value must be unique across the table, and null values are not allowed."
+          },
+          {
+            "question": "What is the difference between db.flush() and db.commit()?",
+            "answer": "flush() sends the SQL to the database but keeps the transaction open (changes can still be rolled back). commit() finalizes the transaction, making changes permanent. Use flush() when you need auto-generated values (like an id) before the transaction is complete."
+          },
+          {
+            "question": "What does cascade='all, delete-orphan' on a relationship mean?",
+            "answer": "When the parent object is deleted, all related child objects are automatically deleted too ('all'). Additionally, if a child is removed from the parent's collection without being explicitly deleted, SQLAlchemy will delete it from the database ('delete-orphan')."
+          },
+          {
+            "question": "Why does get_all() use joinedload(Collection.items)?",
+            "answer": "Without it, accessing collection.items for each collection would trigger a separate SQL query (the N+1 problem). joinedload tells SQLAlchemy to load all items in a single JOIN query, which is much more efficient."
+          },
+          {
+            "question": "In the upsert pattern in create_triple(), why query .first() before inserting?",
+            "answer": "The KnowledgeTriple table has a UniqueConstraint on (subject_type, subject_id, object_type, object_id). Inserting a duplicate would raise a database error. Checking first lets us update the existing row's predicate instead of failing."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 12,
+      "content_md": "Curated resources for deepening your understanding of SQLAlchemy ORM.",
+      "metadata": {
+        "links": [
+          {
+            "title": "SQLAlchemy 2.0 Tutorial",
+            "url": "https://docs.sqlalchemy.org/en/20/tutorial/",
+            "description": "The official tutorial. Start with 'Working with Data' and 'Working with ORM Related Objects'."
+          },
+          {
+            "title": "SQLAlchemy ORM Mapped Column",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/mapped_attributes.html",
+            "description": "Detailed reference for Mapped and mapped_column, the modern 2.x annotation syntax."
+          },
+          {
+            "title": "SQLAlchemy Relationship Patterns",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/relationships.html",
+            "description": "One-to-many, many-to-many, back_populates, and cascade options explained in depth."
+          },
+          {
+            "title": "SQLAlchemy Inheritance Mapping",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/inheritance.html",
+            "description": "Polymorphic identity, joined-table inheritance, and single-table inheritance patterns."
+          },
+          {
+            "title": "Session Basics",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/session_basics.html",
+            "description": "How add, flush, commit, and refresh work together to manage transactions."
+          }
+        ]
+      }
+    }
+  ]
+}

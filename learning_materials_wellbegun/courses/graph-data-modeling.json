@@ -1,0 +1,327 @@
+{
+  "id": "course_009",
+  "slug": "graph-data-modeling",
+  "title": "Graph Data Modeling",
+  "technology": "Knowledge Graphs",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": ["entity-relationship-modeling"],
+    "knowledge": []
+  },
+  "user_familiarity": "You're a data scientist with 10+ years of Python experience. You are a beginner with graph data modeling -- you may have used NetworkX for analysis but haven't designed application data models around graphs.",
+  "relevance_to_project": "WellBegun's knowledge graph connects every entity type (Note, Project, Source, Actor, Activity, Plan, Collection) through subject-predicate-object triples stored in a single database table. The KnowledgeGraph component renders these as an interactive visual graph. Understanding graph modeling explains how WellBegun links entities flexibly without rigid foreign keys.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Graph data modeling stores data as nodes (entities) and edges (relationships) instead of tables and rows. It excels when your data is fundamentally about connections: 'what is related to X?' and 'how is A connected to B?'\n\n**Python Analogy:** If you've used NetworkX, you already know graph data modeling. Nodes are entities, edges are relationships. Graph data modeling applies the same idea to how you structure your application's persistent data.",
+      "metadata": {
+        "key_takeaways": [
+          "A graph stores data as nodes (entities) and edges (relationships)",
+          "Edges can be directed and carry properties (like a label or type)",
+          "Subject-predicate-object triples are the simplest way to represent graph data",
+          "Graphs excel at answering 'what is connected to X?' -- a question requiring multiple JOINs in relational databases"
+        ]
+      }
+    },
+    {
+      "id": "concept-nodes-edges",
+      "title": "Nodes and Edges",
+      "type": "concept",
+      "order": 2,
+      "content_md": "A **node** represents an entity (Note, Project, Plan, etc.). An **edge** connects two nodes and describes their relationship ('contains', 'has activities', 'cites'). In a graph, relationships are first-class citizens -- they exist as explicit objects, not just column values.\n\n**Python/pandas Comparison:** In a tabular world, you'd represent relationships with foreign key columns or junction tables. In a graph, each relationship is its own explicit record.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "text",
+            "code": "[Project: \"ML Research\"] --contains--> [Note: \"Literature Review\"]\n[Plan: \"Sprint 1\"]       --has activities--> [Collection: \"Sprint Tasks\"]\n[Note: \"Paper Summary\"]  --cites--> [Source: \"Smith et al. 2024\"]",
+            "file_reference": null,
+            "annotation": "Three example edges in WellBegun's knowledge graph. Each connects two entity nodes with a labeled, directed relationship."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-directed-undirected",
+      "title": "Directed vs. Undirected Graphs",
+      "type": "concept",
+      "order": 3,
+      "content_md": "In a **directed graph**, edges have direction: A -> B differs from B -> A. 'Project contains Note' is not the same as 'Note contains Project.' In an **undirected graph**, A -- B is the same as B -- A.\n\nWellBegun's knowledge graph is **directed**. Each triple has a subject and an object, and the direction matters.",
+      "metadata": {}
+    },
+    {
+      "id": "concept-properties-labels",
+      "title": "Properties and Labels",
+      "type": "concept",
+      "order": 4,
+      "content_md": "Nodes carry a type and ID. In WellBegun, full entity data (title, content, dates) lives in relational tables; the graph references nodes by type + ID. Edges carry a predicate (label) like 'contains' or 'cites' that gives the relationship meaning.\n\nThis hybrid approach is common: relational database for entity data (efficient CRUD), graph structure for relationships (efficient traversal).",
+      "metadata": {}
+    },
+    {
+      "id": "concept-triples",
+      "title": "Subject-Predicate-Object Triples",
+      "type": "concept",
+      "order": 5,
+      "content_md": "The simplest graph representation: (subject, predicate, object). Each triple is one fact, one edge. The subject and object are nodes; the predicate is the edge label. This is the same structure used in RDF (W3C standard for knowledge graphs). WellBegun stores triples in a single database table.\n\n**Python Comparison:** A triple is like a row in a DataFrame with three columns: subject, predicate, object. The knowledge graph is a DataFrame of such rows -- but you can traverse from node to node by following edges.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "text",
+            "code": "| Subject        | Predicate      | Object          |\n|----------------|----------------|------------------|\n| Project(id=1)  | contains       | Note(id=3)       |\n| Plan(id=2)     | has activities | Collection(id=5) |\n| Note(id=3)     | cites          | Source(id=7)     |",
+            "file_reference": null,
+            "annotation": "Each row is one edge in the graph. The entire table is the knowledge graph."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-traversal",
+      "title": "Graph Traversal",
+      "type": "concept",
+      "order": 6,
+      "content_md": "Traversal means following edges from one node to discover connected nodes. Starting from a node: find neighbors (directly connected), find paths (chains of edges), or filter by predicate (only follow specific relationship types).\n\nExample: from Project(id=1), follow 'contains' edges to find Notes, then follow 'cites' edges from those Notes to find Sources. In SQL, this would require multiple JOINs. In a graph, it's a natural traversal.\n\n**Python Comparison:** In NetworkX, this is `nx.neighbors(G, node)` or `nx.shortest_path(G, source, target)`.",
+      "metadata": {}
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 7,
+      "content_md": "WellBegun implements its knowledge graph using a single `knowledge_triples` table. Each row stores a subject (type + ID), predicate, and object (type + ID). This polymorphic design lets any entity type connect to any other without separate junction tables.\n\n```python\nclass KnowledgeTriple(Base):\n    __tablename__ = \"knowledge_triples\"\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    subject_type: Mapped[str] = mapped_column(String(20))\n    subject_id: Mapped[int] = mapped_column(Integer)\n    predicate: Mapped[str] = mapped_column(String(100))\n    object_type: Mapped[str] = mapped_column(String(20))\n    object_id: Mapped[int] = mapped_column(Integer)\n```\n*File: `src/wellbegun/models/knowledge_triple.py`*\n\nOn the frontend, `knowledgeGraph.ts` stores triples and board node positions. `KnowledgeGraph.svelte` renders them as a visual graph with positioned nodes and labeled edges.\n\n**Example relationships:** Plan(id=1) --'has activities'--> Collection(id=5), Project(id=2) --'contains'--> Note(id=3), Note(id=4) --'cites'--> Source(id=7), Activity(id=6) --'assigned to'--> Actor(id=1).",
+      "metadata": {
+        "key_files": [
+          "src/wellbegun/models/knowledge_triple.py",
+          "frontend/src/lib/stores/knowledgeGraph.ts",
+          "frontend/src/lib/components/graph/KnowledgeGraph.svelte"
+        ],
+        "example_triples": [
+          {"subject": "Plan(id=1)", "predicate": "has activities", "object": "Collection(id=5)"},
+          {"subject": "Project(id=2)", "predicate": "contains", "object": "Note(id=3)"},
+          {"subject": "Note(id=4)", "predicate": "cites", "object": "Source(id=7)"},
+          {"subject": "Activity(id=6)", "predicate": "assigned to", "object": "Actor(id=1)"}
+        ]
+      }
+    },
+    {
+      "id": "example-reading-triple",
+      "title": "Reading a Triple",
+      "type": "example",
+      "order": 8,
+      "content_md": "Consider this row: `id=42, subject_type='Plan', subject_id=1, predicate='has activities', object_type='Collection', object_id=5`.\n\nThis says: **Plan #1 'has activities' in Collection #5**. In graph terms: Node Plan(1) --['has activities']--> Node Collection(5). The direction matters: the plan has the activities, not the reverse.\n\nTo find all activities in Plan #1, query: `WHERE subject_type='Plan' AND subject_id=1 AND predicate='has activities'`. The result's object columns tell you which collection to look at.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "Identify the subject: Plan(id=1)",
+            "code": null,
+            "file": null
+          },
+          {
+            "step": 2,
+            "description": "Identify the predicate: 'has activities'",
+            "code": null,
+            "file": null
+          },
+          {
+            "step": 3,
+            "description": "Identify the object: Collection(id=5)",
+            "code": null,
+            "file": null
+          },
+          {
+            "step": 4,
+            "description": "Read as a sentence: Plan #1 has activities in Collection #5",
+            "code": null,
+            "file": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "example-traversal",
+      "title": "Traversing Connections",
+      "type": "example",
+      "order": 9,
+      "content_md": "Find everything connected to Project(id=2). Query twice:\n\n**As subject (outgoing edges):**\n```sql\nSELECT * FROM knowledge_triples\nWHERE subject_type = 'Project' AND subject_id = 2;\n```\nResults: Project(2) --'contains'--> Note(3), Project(2) --'contains'--> Note(8)\n\n**As object (incoming edges):**\n```sql\nSELECT * FROM knowledge_triples\nWHERE object_type = 'Project' AND object_id = 2;\n```\nResults: Plan(1) --'relates to'--> Project(2)\n\nAll neighbors: Note(3), Note(8), Plan(1). On the KnowledgeGraph board, these appear as nodes connected to the Project node by labeled edges.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "Query for outgoing edges (Project as subject)",
+            "code": "SELECT * FROM knowledge_triples WHERE subject_type = 'Project' AND subject_id = 2;",
+            "file": null
+          },
+          {
+            "step": 2,
+            "description": "Query for incoming edges (Project as object)",
+            "code": "SELECT * FROM knowledge_triples WHERE object_type = 'Project' AND object_id = 2;",
+            "file": null
+          },
+          {
+            "step": 3,
+            "description": "Combine results to get all neighbors",
+            "code": null,
+            "file": null
+          }
+        ],
+        "key_insight": "Finding all neighbors requires checking both directions -- the entity can be either the subject or the object in a triple."
+      }
+    },
+    {
+      "id": "example-visual-graph",
+      "title": "How Triples Become a Visual Graph",
+      "type": "example",
+      "order": 10,
+      "content_md": "The frontend converts triples into a visual graph:\n\n1. `loadTriples()` fetches all triples from `GET /api/knowledge-triples/`\n2. `triples.set(data)` updates the store\n3. `loadBoard()` fetches board node positions from `GET /api/board-nodes/`\n4. `boardNodes.set(data)` updates the store\n5. `KnowledgeGraph.svelte` reads `$triples` and `$boardNodes`, rendering nodes as positioned elements and triples as lines between them\n\nThe component also imports entity stores (`$notes`, `$projects`, etc.) to display entity names on graph nodes.",
+      "metadata": {
+        "key_files": [
+          "frontend/src/lib/stores/knowledgeGraph.ts",
+          "frontend/src/lib/components/graph/KnowledgeGraph.svelte"
+        ]
+      }
+    },
+    {
+      "id": "exercises",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 11,
+      "content_md": "### Exercise 1: Model a New Relationship\n\nYou want to represent that Actor(id=3) 'authored' Note(id=10). Write out the triple as a row in the knowledge_triples table.\n\n### Exercise 2: Query for All Neighbors\n\nWrite SQL (or pseudocode) to find all entities connected to Note(id=5) -- both as subject and as object. How many queries do you need?\n\n### Exercise 3: Graph vs. Relational\n\nIn a traditional relational schema, how would you represent 'Plan has activities in Collection'? Compare to the triple representation. What are the trade-offs?",
+      "metadata": {
+        "exercises": [
+          {
+            "id": "model-new-relationship",
+            "title": "Model a New Relationship",
+            "task": "Represent Actor(id=3) 'authored' Note(id=10) as a triple. What are subject_type, subject_id, predicate, object_type, object_id?",
+            "hint": "The actor is the subject (they performed the action), 'authored' is the predicate, the note is the object.",
+            "expected_answer": "subject_type='Actor', subject_id=3, predicate='authored', object_type='Note', object_id=10."
+          },
+          {
+            "id": "query-all-neighbors",
+            "title": "Query for All Neighbors",
+            "task": "Write SQL to find all entities connected to Note(id=5), both as subject and as object.",
+            "hint": "Two queries: one where Note(id=5) is the subject, one where it's the object. Union the results.",
+            "expected_answer": "Query 1: WHERE subject_type='Note' AND subject_id=5. Query 2: WHERE object_type='Note' AND object_id=5. Two queries needed."
+          },
+          {
+            "id": "graph-vs-relational",
+            "title": "Graph vs. Relational",
+            "task": "How would you represent 'Plan has activities in Collection' relationally? Compare trade-offs with the triple approach.",
+            "hint": "Relationally: add a collection_id FK to plans, or create a junction table. The triple table is more flexible but loses type safety and referential integrity.",
+            "expected_answer": "Relational: FK or junction table. Triple: generic table for all relationships. Trade-off: flexibility vs. type safety and referential integrity."
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 12,
+      "content_md": "Test your understanding of graph data modeling concepts as used in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "id": "q1",
+            "question": "What are the two fundamental building blocks of a graph data model?",
+            "options": [
+              "Tables and columns",
+              "Nodes (entities) and edges (relationships)",
+              "Keys and values",
+              "Classes and methods"
+            ],
+            "correct_index": 1,
+            "explanation": "A graph represents data as nodes (things) connected by edges (relationships). In WellBegun, nodes are entity types (Note, Project, Plan) and edges are triples connecting them."
+          },
+          {
+            "id": "q2",
+            "question": "In WellBegun's KnowledgeTriple model, what do subject_type and subject_id together represent?",
+            "options": [
+              "A database table name and primary key",
+              "A node in the graph -- the entity on the 'from' side of a relationship",
+              "A predicate and its parameters",
+              "A foreign key constraint"
+            ],
+            "correct_index": 1,
+            "explanation": "The combination of subject_type (e.g., 'Project') and subject_id (e.g., 1) uniquely identifies which entity is the subject of the relationship. This is a polymorphic reference."
+          },
+          {
+            "id": "q3",
+            "question": "Why does WellBegun use a single knowledge_triples table instead of separate foreign keys?",
+            "options": [
+              "It's faster for read queries",
+              "It allows any entity type to relate to any other entity type through a single, flexible structure",
+              "It uses less disk space",
+              "SQLAlchemy requires it"
+            ],
+            "correct_index": 1,
+            "explanation": "The triple table can represent any relationship between any two entities without schema changes. Separate FKs would require a new column or junction table for each relationship type."
+          },
+          {
+            "id": "q4",
+            "question": "What does 'traversal' mean in graph data modeling?",
+            "options": [
+              "Deleting nodes from the graph",
+              "Following edges from one node to discover connected nodes",
+              "Sorting nodes alphabetically",
+              "Converting a graph to a table"
+            ],
+            "correct_index": 1,
+            "explanation": "Traversal is the fundamental graph operation: starting from a node, follow edges to find neighbors, then follow their edges for further connections."
+          },
+          {
+            "id": "q5",
+            "question": "Given the triple Plan(id=1) --'has activities'--> Collection(id=5), which SQL query finds this relationship?",
+            "options": [
+              "SELECT * FROM knowledge_triples WHERE predicate = 'has activities'",
+              "SELECT * FROM knowledge_triples WHERE subject_type = 'Plan' AND subject_id = 1 AND predicate = 'has activities'",
+              "SELECT * FROM plans WHERE id = 1",
+              "SELECT * FROM collections WHERE id = 5"
+            ],
+            "correct_index": 1,
+            "explanation": "This query finds all 'has activities' relationships from Plan #1. Option A would find ALL 'has activities' triples, not just those for Plan #1."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 13,
+      "content_md": "Curated resources for deepening your understanding of graph data modeling.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Graph Data Modeling (Wikipedia)",
+            "url": "https://en.wikipedia.org/wiki/Graph_database#Graph_data_modeling",
+            "type": "reference"
+          },
+          {
+            "title": "RDF and Knowledge Graphs (W3C)",
+            "url": "https://www.w3.org/RDF/",
+            "type": "official-docs"
+          },
+          {
+            "title": "NetworkX Documentation",
+            "url": "https://networkx.org/documentation/stable/",
+            "type": "reference"
+          },
+          {
+            "title": "Neo4j Graph Data Modeling Guide",
+            "url": "https://neo4j.com/developer/data-modeling/",
+            "type": "tutorial"
+          },
+          {
+            "title": "Introduction to Knowledge Graphs",
+            "url": "https://arxiv.org/abs/2003.02320",
+            "type": "academic"
+          }
+        ]
+      }
+    }
+  ]
+}

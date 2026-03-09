@@ -11,6 +11,7 @@
 
 	let title = $state(editData?.title ?? '');
 	let description = $state(editData?.description ?? '');
+	let outcome = $state(editData?.outcome ?? '');
 	let duration = $state(editData?.duration?.toString() ?? '');
 	let activityDate = $state(editData?.activity_date ? editData.activity_date.slice(0, 10) : '');
 	let selectedTagIds = $state<number[]>([]);
@@ -21,6 +22,7 @@
 		const data = {
 			title: title.trim(),
 			description: description.trim() || undefined,
+			outcome: outcome.trim() || undefined,
 			duration: duration ? parseInt(duration, 10) : undefined,
 			activity_date: activityDate ? activityDate + 'T00:00:00' : null
 		};
@@ -53,6 +55,7 @@
 		<input type="date" bind:value={activityDate} class="field-input" title="Activity date" />
 	</div>
 	<HashtagTextarea bind:value={description} rows={3} autoSize={!!editData} placeholder="Description (optional) — type # to insert tags..." />
+	<textarea bind:value={outcome} rows={2} class="outcome-input" placeholder="Outcome (optional)..." />
 	{#if !editData}
 		<DefaultTagSuggestions category="activity" bind:selectedTagIds {title} />
 	{/if}
@@ -69,6 +72,7 @@
 	.field-row { display: flex; gap: 6px; }
 	.button-row { display: flex; justify-content: flex-end; gap: 6px; padding-top: 4px; }
 	.field-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; }
+	.outcome-input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; font-family: inherit; resize: vertical; }
 	.btn-save { padding: 6px 14px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
 	.btn-save:hover { background: #7c3aed; }
 	.btn-cancel { padding: 6px 14px; background: white; color: #6b7280; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }

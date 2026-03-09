@@ -1,0 +1,255 @@
+{
+  "id": "knowledge-graphs",
+  "slug": "knowledge-graphs",
+  "title": "Knowledge Graphs & Semantic Triples",
+  "technology": "Knowledge Graphs",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": ["sqlalchemy-orm"],
+    "knowledge": []
+  },
+  "user_familiarity": "You have 10+ years of Python experience and a strong data science background. You think in DataFrames and tables. You have not worked with knowledge graphs, RDF, or graph databases before.",
+  "relevance_to_project": "The knowledge graph is the connective tissue of WellBegun. It links every entity (projects, activities, logs, notes, sources, actors, plans, collections) through semantic triples, powers the AI assistant's contextual understanding via graph traversal in the RAG service, and is visualized as an interactive board in the frontend.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "If you've worked with pandas DataFrames, you think in tables and rows. Knowledge graphs think in relationships: Subject -> Predicate -> Object. It's like a DataFrame with exactly three columns -- but those relationships form a web of connected knowledge, not flat rows.\n\nIn WellBegun, the knowledge graph connects every entity (projects, activities, logs, notes, sources, actors, plans, collections) through meaningful relationships, enabling the app to answer questions like \"what is connected to this project?\" and to provide rich context to the AI assistant.",
+      "metadata": {
+        "key_takeaways": [
+          "A knowledge graph stores facts as triples: (subject, predicate, object) -- e.g., (project#1, \"contains\", activity#5)",
+          "Triples are more flexible than foreign keys -- any entity can relate to any other",
+          "The predicate (verb) gives the relationship meaning: \"contains\", \"cites\", \"belongs to\"",
+          "Graphs enable traversal: \"find everything connected to project X\""
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### 1. The Triple (Subject, Predicate, Object)\n\nThe fundamental unit of a knowledge graph is the **triple** -- a three-part fact statement. In a sentence: \"Project#1 *contains* Activity#5\". The subject acts, the predicate describes the relationship, and the object receives the action.\n\nWellBegun stores triples in the `knowledge_triples` table with a `UniqueConstraint` on `(subject_type, subject_id, object_type, object_id)` ensuring at most one triple between any two specific entities. If the predicate changes, the existing triple is updated rather than duplicated.\n\nNotice the **polymorphic identity** pattern: instead of a foreign key to one specific table, the triple uses `subject_type` + `subject_id` (and `object_type` + `object_id`) to reference *any* entity in the system. This is what makes knowledge graphs more flexible than traditional relational foreign keys.\n\n### 2. Entity Types and Polymorphism\n\nWellBegun defines eight entity types that can participate in the graph: project, activity, note, log, source, actor, plan, collection. Any entity can be the subject or object of a triple.\n\nIf you are coming from pandas, think of it this way: instead of having separate DataFrames for \"project-activity relationships\", \"project-note relationships\", and \"note-source relationships\", you have one DataFrame where each row is `[subject_type, subject_id, predicate, object_type, object_id]`. The types tell you what kind of entities are involved.\n\n### 3. Structural vs Semantic Predicates\n\nStructural predicates are auto-generated from the application's data model. When you add a note to a collection, the system automatically creates a triple with the predicate \"contains\". The lookup function falls back to \"related to\" for unlisted entity-type pairs.\n\nSemantic predicates are user-created relationships organized by category: Meaning (defines, contrasts with), Reasoning (supports, contradicts), Causality (causes, depends on), Process (precedes, implements), Planning (blocks, decomposes into), Evaluation (validates, supersedes), and Participation (attends, chairs). Semantic predicates have both a forward and reverse form -- if note#3 \"supports\" note#7, then note#7 is \"supported by\" note#3.\n\n### 4. Graph Traversal\n\nRetrieving all connections for an entity is the most fundamental graph operation -- a **one-hop traversal**. The `get_triples_for_entity` function finds every triple where the entity appears as either subject or object using an `or_` clause. The entity might be the subject (\"project#1 contains note#3\") or the object (\"note#3 belongs to project#1\"). To find all neighbors, you must check both positions.\n\n### 5. Graph Population\n\nWellBegun builds its knowledge graph by scanning existing data relationships. The `populate_from_focus` function works in stages: find entity tags for selected projects/activities, discover tagged entities, create board nodes for visualization, create triples from tag relationships, and create triples from FK relationships (e.g., Activity.source_id becomes an \"activity consults source\" triple). The `create_triple` function implements an **upsert pattern** -- it checks for existing triples and updates the predicate if needed.",
+      "metadata": {
+        "key_takeaways": [
+          "A triple is (subject, predicate, object) -- the atomic fact in a knowledge graph",
+          "Polymorphic identity (type + id) lets any entity be subject or object without per-pair join tables",
+          "Structural predicates are auto-generated from data relationships; semantic predicates are user-chosen meanings",
+          "One-hop traversal uses or_ to find triples where the entity is either subject or object",
+          "Graph population converts existing FK and tag relationships into triples using an upsert pattern"
+        ],
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "class KnowledgeTriple(Base):\n    __tablename__ = \"knowledge_triples\"\n    __table_args__ = (\n        UniqueConstraint(\n            \"subject_type\", \"subject_id\", \"object_type\", \"object_id\",\n            name=\"uq_knowledge_triple\",\n        ),\n    )\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)\n    subject_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    predicate: Mapped[str] = mapped_column(String(100), nullable=False)\n    object_type: Mapped[str] = mapped_column(String(20), nullable=False)\n    object_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )",
+            "file_reference": "src/wellbegun/models/knowledge_triple.py:9-27",
+            "annotation": "The KnowledgeTriple SQLAlchemy model. The UniqueConstraint ensures one triple per entity pair. The polymorphic identity pattern (subject_type + subject_id, object_type + object_id) allows any entity to participate."
+          },
+          {
+            "language": "typescript",
+            "code": "export interface KnowledgeTriple {\n\tid: number;\n\tsubject_type: string;\n\tsubject_id: number;\n\tpredicate: string;\n\tobject_type: string;\n\tobject_id: number;\n\tcreated_at: string;\n}",
+            "file_reference": "frontend/src/lib/types.ts:159-167",
+            "annotation": "The frontend TypeScript interface mirroring the backend model. The frontend receives triples as JSON from the API and uses this type for the interactive graph visualization."
+          },
+          {
+            "language": "python",
+            "code": "STRUCTURAL_PREDICATES: dict[tuple[str, str], str] = {\n    # -- project --\n    (\"project\", \"activity\"): \"contains\",\n    (\"project\", \"note\"): \"contains\",\n    (\"project\", \"source\"): \"references\",\n    (\"project\", \"actor\"): \"involves\",\n    # -- activity --\n    (\"activity\", \"source\"): \"consults\",\n    (\"activity\", \"actor\"): \"assigned to\",\n    # -- note --\n    (\"note\", \"source\"): \"cites\",\n    (\"note\", \"actor\"): \"mentions\",\n    # -- actor --\n    (\"actor\", \"project\"): \"contributes to\",\n    # -- collection --\n    (\"collection\", \"note\"): \"contains\",\n    # ... many more pairs\n}\n\ndef get_structural_predicate(source_type: str, target_type: str) -> str:\n    \"\"\"Return the default structural predicate for a (source, target) type pair.\"\"\"\n    return STRUCTURAL_PREDICATES.get((source_type, target_type), \"related to\")",
+            "file_reference": "src/wellbegun/services/structural_relations.py:22-136",
+            "annotation": "Structural predicates map (source_type, target_type) pairs to default verbs. Unlisted pairs fall back to 'related to'. This is the vocabulary that auto-generated triples use."
+          },
+          {
+            "language": "python",
+            "code": "def get_triples_for_entity(\n    db: Session, entity_type: str, entity_id: int\n) -> list[KnowledgeTriple]:\n    return (\n        db.query(KnowledgeTriple)\n        .filter(\n            or_(\n                (KnowledgeTriple.subject_type == entity_type)\n                & (KnowledgeTriple.subject_id == entity_id),\n                (KnowledgeTriple.object_type == entity_type)\n                & (KnowledgeTriple.object_id == entity_id),\n            )\n        )\n        .order_by(KnowledgeTriple.created_at.desc())\n        .all()\n    )",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:18-33",
+            "annotation": "One-hop graph traversal. The or_ clause finds triples where the entity is either subject or object, returning all direct neighbors regardless of relationship direction."
+          },
+          {
+            "language": "python",
+            "code": "def create_triple(\n    db: Session,\n    subject_type: str,\n    subject_id: int,\n    predicate: str,\n    object_type: str,\n    object_id: int,\n) -> KnowledgeTriple:\n    \"\"\"Create or return existing triple (upsert by unique constraint).\n\n    Matches on (subject_type, subject_id, object_type, object_id).\n    If a triple exists with a different predicate, updates it.\n    \"\"\"\n    existing = (\n        db.query(KnowledgeTriple)\n        .filter(\n            KnowledgeTriple.subject_type == subject_type,\n            KnowledgeTriple.subject_id == subject_id,\n            KnowledgeTriple.object_type == object_type,\n            KnowledgeTriple.object_id == object_id,\n        )\n        .first()\n    )\n    if existing:\n        if existing.predicate != predicate:\n            existing.predicate = predicate\n            db.flush()\n        return existing\n    triple = KnowledgeTriple(\n        subject_type=subject_type,\n        subject_id=subject_id,\n        predicate=predicate,\n        object_type=object_type,\n        object_id=object_id,\n    )\n    db.add(triple)\n    db.commit()\n    db.refresh(triple)\n    return triple",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:36-74",
+            "annotation": "The upsert pattern: check for an existing triple between the same two entities. If found with a different predicate, update it. If not found, create a new one. The UniqueConstraint backs this up at the database level."
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "The knowledge graph system in WellBegun spans three layers:\n\n**Data layer**: The `KnowledgeTriple` SQLAlchemy model (`src/wellbegun/models/knowledge_triple.py`) stores triples in the database with a unique constraint ensuring one triple per entity pair.\n\n**Service layer**: `src/wellbegun/services/knowledge_service.py` provides CRUD operations (`create_triple`, `delete_triple`, `update_triple_predicate`), traversal (`get_triples_for_entity`, `get_all_triples`), relationship management (`swap_triple_direction`), and graph building (`populate_from_focus`, `populate_all`).\n\n**Predicate definitions**: `src/wellbegun/services/structural_relations.py` defines the vocabulary of structural and semantic predicates as pure constants, safely importable from anywhere without circular dependencies.\n\n**AI integration**: The RAG service (`src/wellbegun/services/rag_service.py`) uses graph traversal to provide relationship context to the AI assistant, formatting triples as human-readable lines like `[project#1] --contains--> [note#3]`.\n\n**Visualization**: The `KnowledgeGraph.svelte` component (`frontend/src/lib/components/graph/KnowledgeGraph.svelte`) renders the graph as an interactive board with draggable entity cards and visible relationship edges.\n\n**Graph-keeping side effects**: Other services create triples as side effects. For example, the collection service creates a \"contains\" triple whenever an item is added to a collection.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "def populate_from_focus(\n    db: Session,\n    project_ids: list[int],\n    activity_ids: list[int],\n) -> dict:\n    \"\"\"Populate the graph board with entities from a focus selection.\n\n    1. Finds entity tags for the selected projects/activities\n    2. Finds all entities tagged with those tags\n    3. Creates board nodes (only for new entities, preserving existing positions)\n    4. Creates knowledge triples for the tag-based relationships\n    \"\"\"",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:159-170",
+            "annotation": "The entry point for building the graph from a focus selection. The docstring documents the four-stage pipeline: find tags, discover entities, create nodes, create triples."
+          },
+          {
+            "language": "python",
+            "code": "    # 6. Create knowledge triples for tag relationships (only for validated entities)\n    triples_created = 0\n    for tag in entity_tags:\n        tagged_with_this = [\n            et for et in tagged_records\n            if et.tag_id == tag.id and (et.target_type, et.target_id) in entities\n        ]\n        for et in tagged_with_this:\n            predicate = get_default_predicate(tag.entity_type, et.target_type)\n            # create_triple does upsert, won't duplicate\n            create_triple(\n                db,\n                tag.entity_type, tag.entity_id,\n                predicate,\n                et.target_type, et.target_id,\n            )\n            triples_created += 1",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:289-305",
+            "annotation": "Stage 4 of populate_from_focus: for each entity tag, create triples connecting the tag source (e.g., project) to all entities tagged with it. The upsert pattern prevents duplicates."
+          },
+          {
+            "language": "python",
+            "code": "    # 7. Create triples from FK-based structural relationships (scoped to entities on board)\n    # Activity.source_id FK: activity -> source (\"consults\")\n    for act in db.query(Activity).filter(Activity.source_id.isnot(None)).all():\n        if _exists(\"activity\", act.id) and _exists(\"source\", act.source_id):\n            create_triple(db, \"activity\", act.id, \"consults\", \"source\", act.source_id)\n            triples_created += 1\n\n    for ci in db.query(CollectionItem).all():\n        if _exists(\"collection\", ci.collection_id) and _exists(ci.member_entity_type, ci.member_entity_id):\n            create_triple(\n                db, \"collection\", ci.collection_id,\n                get_default_predicate(\"collection\", ci.member_entity_type),\n                ci.member_entity_type, ci.member_entity_id,\n            )\n            triples_created += 1",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:307-326",
+            "annotation": "Stage 5: convert foreign key relationships into triples. Activity.source_id becomes 'activity consults source'. CollectionItems become 'collection contains [entity]'. Only creates triples for entities already on the board."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: How Adding an Item to a Collection Creates a Triple\n\nWhen you add an item to a collection, the collection service does not just insert a `CollectionItem` row -- it also creates a knowledge triple to keep the graph in sync.\n\nHere is what happens step by step:\n1. `get_structural_predicate(\"collection\", member_entity_type)` looks up the default verb. For most entity types added to a collection, this returns `\"contains\"`.\n2. `knowledge_service.create_triple(...)` either creates a new triple or finds the existing one (upsert behavior).\n3. The result: `(collection#7, \"contains\", note#12)` is now a fact in the knowledge graph.\n\nThis pattern -- creating triples as a side effect of domain operations -- ensures the graph stays consistent with the application state without requiring users to manually manage relationships.\n\n### Example 2: How the RAG Service Traverses the Graph for Context\n\nWhen the AI assistant answers a question, it uses graph neighbors to provide richer context. For the top 5 search results, it fetches up to 3 triples each and formats them as human-readable lines. The AI assistant receives these lines as context, allowing it to understand not just the individual entities but how they relate to each other.\n\nFor a data scientist, this is analogous to enriching your feature set: instead of passing isolated records to a model, you pass the entity *and its neighborhood*.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "    # Create \"contains\" knowledge triple to keep graph in sync\n    from wellbegun.services import knowledge_service\n    predicate = get_structural_predicate(\"collection\", member_entity_type)\n    knowledge_service.create_triple(\n        db,\n        subject_type=\"collection\",\n        subject_id=collection_id,\n        predicate=predicate,\n        object_type=member_entity_type,\n        object_id=member_entity_id,\n    )",
+            "file_reference": "src/wellbegun/services/collection_service.py:166-176",
+            "annotation": "After inserting a CollectionItem row, the collection service creates a 'contains' triple. This keeps the knowledge graph in sync with application state as a side effect of the domain operation."
+          },
+          {
+            "language": "python",
+            "code": "    # Graph neighbors for top 5 search hits\n    graph_lines: list[str] = []\n    allowed_types = set(detected_types) if detected_types else None\n    for item in search_results[:5]:\n        triples = knowledge_service.get_triples_for_entity(\n            db, item[\"type\"], item[\"id\"]\n        )\n        for triple in triples[:3]:\n            line = (\n                f\"[{triple.subject_type}#{triple.subject_id}] \"\n                f\"---{triple.predicate}---> \"\n                f\"[{triple.object_type}#{triple.object_id}]\"\n            )\n            graph_lines.append(line)",
+            "file_reference": "src/wellbegun/services/rag_service.py:543-556",
+            "annotation": "The RAG service traverses the graph for each search hit, formatting triples as human-readable lines like '[project#1] --contains--> [note#3]'. These lines are passed to the AI assistant as relationship context."
+          },
+          {
+            "language": "python",
+            "code": "            # Add referenced entities to refs if not already present\n            # When entity types were detected, only add neighbors of those types\n            for etype, eid in [\n                (triple.subject_type, triple.subject_id),\n                (triple.object_type, triple.object_id),\n            ]:\n                if allowed_types and etype not in allowed_types:\n                    continue\n                ref_key = (etype, eid)\n                if ref_key not in seen:\n                    seen.add(ref_key)\n                    entity_refs.append({\"type\": etype, \"id\": eid, \"title\": \"\"})",
+            "file_reference": "src/wellbegun/services/rag_service.py:557-568",
+            "annotation": "Beyond formatting context lines, the RAG service also collects referenced entities from the graph neighbors. These entities are later hydrated with their full content, expanding the AI's knowledge beyond the original search hits."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Trace a Triple's Lifecycle\n\nOpen `src/wellbegun/services/knowledge_service.py` and trace what happens when `create_triple` is called with a subject/object pair that already exists but with a different predicate. What SQL queries does it run? What happens to the existing row?\n\n### Exercise 2: Extend the Graph Traversal\n\nThe current `get_triples_for_entity` (lines 18-33) does a one-hop traversal. How would you modify it to do a two-hop traversal -- finding entities connected to the entity's neighbors? Sketch the approach in pseudocode.",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Open src/wellbegun/services/knowledge_service.py and trace what happens when create_triple is called with a subject/object pair that already exists but with a different predicate. What SQL queries does it run? What happens to the existing row?",
+            "hints": [
+              "Look at lines 49-63 in knowledge_service.py.",
+              "The function first queries for an existing triple matching on (subject_type, subject_id, object_type, object_id).",
+              "If found with a different predicate, it updates the predicate in place and calls db.flush() rather than db.commit().",
+              "The UniqueConstraint on the model ensures only one triple per entity pair at the database level."
+            ],
+            "solution_reference": "src/wellbegun/services/knowledge_service.py:36-74"
+          },
+          {
+            "task": "The current get_triples_for_entity (lines 18-33) does a one-hop traversal. How would you modify it to do a two-hop traversal -- finding entities connected to the entity's neighbors? Sketch the approach in pseudocode.",
+            "hints": [
+              "Call get_triples_for_entity to get the first hop.",
+              "For each triple returned, extract the 'other' entity (the one that is not the starting entity).",
+              "Then call get_triples_for_entity again for each neighbor.",
+              "Collect all triples from both hops, deduplicating by triple ID to avoid returning the same relationship twice."
+            ],
+            "solution_reference": "src/wellbegun/services/knowledge_service.py:18-33"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of knowledge graphs and semantic triples as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What are the three components of a knowledge triple?",
+            "options": [
+              "Table, Row, Column",
+              "Subject, Predicate, Object",
+              "Entity, Attribute, Value",
+              "Key, Value, Type"
+            ],
+            "correct_index": 1,
+            "explanation": "A triple represents a fact as (subject, predicate, object), such as (project#1, \"contains\", activity#5). The subject is the actor, the predicate is the verb describing the relationship, and the object is what the relationship points to."
+          },
+          {
+            "question": "Why does WellBegun use subject_type + subject_id instead of a single foreign key?",
+            "options": [
+              "It is faster for database lookups",
+              "SQLAlchemy does not support foreign keys",
+              "It allows any entity type to be the subject or object of a triple",
+              "It reduces the number of database tables needed"
+            ],
+            "correct_index": 2,
+            "explanation": "This polymorphic identity pattern means a single knowledge_triples table can store relationships between any combination of entity types (project, note, source, actor, etc.) without needing a separate join table for each pair."
+          },
+          {
+            "question": "What is the purpose of the or_ clause in get_triples_for_entity?",
+            "options": [
+              "It combines two different database queries for performance",
+              "It finds triples where the entity is either the subject or the object",
+              "It handles the case where the entity does not exist",
+              "It sorts results by creation date"
+            ],
+            "correct_index": 1,
+            "explanation": "An entity can appear on either side of a relationship. Project#1 might be the subject in 'project#1 contains note#3' and the object in 'actor#2 contributes to project#1'. The or_ clause ensures both directions are captured (src/wellbegun/services/knowledge_service.py:24-29)."
+          },
+          {
+            "question": "What is the difference between a structural predicate and a semantic predicate?",
+            "options": [
+              "Structural predicates are stored in the database; semantic predicates are not",
+              "Structural predicates are auto-generated from data relationships; semantic predicates are user-chosen meanings",
+              "Structural predicates connect entities; semantic predicates connect triples",
+              "There is no difference -- they are interchangeable terms"
+            ],
+            "correct_index": 1,
+            "explanation": "Structural predicates like 'contains' are assigned automatically when entities are related through the app's data model (e.g., adding an item to a collection). Semantic predicates like 'supports', 'contradicts', or 'causes' are chosen by the user to express richer, domain-specific meaning (src/wellbegun/services/structural_relations.py:22-131)."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of knowledge graphs, from foundational concepts to Python-specific tools.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Knowledge Graphs - Introduction (Stanford CS520)",
+            "url": "https://web.stanford.edu/class/cs520/",
+            "type": "course"
+          },
+          {
+            "title": "RDF (Resource Description Framework) Primer",
+            "url": "https://www.w3.org/TR/rdf11-primer/",
+            "type": "official-docs"
+          },
+          {
+            "title": "NetworkX: Python Graph Library Tutorial",
+            "url": "https://networkx.org/documentation/stable/tutorial.html",
+            "type": "tutorial"
+          },
+          {
+            "title": "Knowledge Graphs: Fundamentals, Techniques, and Applications (Hogan et al.)",
+            "url": "https://kgbook.org/",
+            "type": "book"
+          }
+        ]
+      }
+    }
+  ]
+}

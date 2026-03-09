@@ -1,0 +1,186 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-03-05T14:00:00Z",
+  "project": {
+    "name": "WellBegun",
+    "slug": "wellbegun",
+    "description": "A note-taking and knowledge management application with knowledge graph and AI assistant features",
+    "root_path": "/Users/stefano.rapisarda/StefanoHome/Projects/Programming/WellBegun",
+    "primary_languages": ["Python", "TypeScript"],
+    "frameworks": ["FastAPI", "Svelte/SvelteKit"]
+  },
+  "user_profile": {
+    "role": "Data scientist / researcher",
+    "experience_years": 10,
+    "primary_skills": ["Python", "data analysis", "statistical modeling", "scientific computing"],
+    "learning_goals": [
+      "Understand full-stack web development patterns",
+      "Understand high-level software architecture concepts",
+      "Deepen FastAPI and REST API knowledge",
+      "Learn Svelte/SvelteKit for frontend development",
+      "Understand SQLAlchemy ORM patterns",
+      "Learn knowledge graph concepts"
+    ]
+  },
+  "assessment_summary": {
+    "total_technologies": 20,
+    "gaps_identified": 17,
+    "courses_generated": 17,
+    "estimated_total_minutes": 380
+  },
+  "learning_path": [
+    {
+      "course_slug": "client-server-architecture",
+      "title": "Client-Server Architecture",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": [],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "entity-relationship-modeling",
+      "title": "Entity-Relationship Modeling",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": [],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "crud-operations",
+      "title": "CRUD Operations",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 15,
+      "prerequisites": ["client-server-architecture"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "orm-concepts",
+      "title": "ORM (Object-Relational Mapping)",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["entity-relationship-modeling"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "event-driven-ui",
+      "title": "Event-Driven UI",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 15,
+      "prerequisites": ["client-server-architecture"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "api-design",
+      "title": "API Design",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["client-server-architecture", "crud-operations"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "layered-architecture",
+      "title": "Layered Architecture",
+      "category": "pattern",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["client-server-architecture"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "reactive-ui-programming",
+      "title": "Reactive UI Programming",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 15,
+      "prerequisites": ["event-driven-ui"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "graph-data-modeling",
+      "title": "Graph Data Modeling",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 15,
+      "prerequisites": ["entity-relationship-modeling"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "rest-apis",
+      "title": "REST APIs & HTTP Fundamentals",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 25,
+      "prerequisites": ["client-server-architecture", "crud-operations", "api-design"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "fastapi",
+      "title": "FastAPI for Python Developers",
+      "category": "framework",
+      "difficulty": "beginner",
+      "estimated_minutes": 30,
+      "prerequisites": ["rest-apis", "layered-architecture"],
+      "priority": "critical"
+    },
+    {
+      "course_slug": "typescript",
+      "title": "TypeScript Essentials",
+      "category": "language",
+      "difficulty": "beginner",
+      "estimated_minutes": 25,
+      "prerequisites": [],
+      "priority": "important"
+    },
+    {
+      "course_slug": "sqlalchemy",
+      "title": "SQLAlchemy ORM",
+      "category": "library",
+      "difficulty": "beginner",
+      "estimated_minutes": 30,
+      "prerequisites": ["orm-concepts"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "svelte-sveltekit",
+      "title": "Svelte & SvelteKit",
+      "category": "framework",
+      "difficulty": "beginner",
+      "estimated_minutes": 30,
+      "prerequisites": ["typescript", "reactive-ui-programming"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "reactive-stores",
+      "title": "Reactive Stores & State Management",
+      "category": "pattern",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["svelte-sveltekit", "reactive-ui-programming"],
+      "priority": "important"
+    },
+    {
+      "course_slug": "knowledge-graphs",
+      "title": "Knowledge Graphs & Semantic Triples",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["graph-data-modeling"],
+      "priority": "nice-to-have"
+    },
+    {
+      "course_slug": "rag",
+      "title": "RAG (Retrieval-Augmented Generation)",
+      "category": "concept",
+      "difficulty": "beginner",
+      "estimated_minutes": 20,
+      "prerequisites": ["rest-apis"],
+      "priority": "nice-to-have"
+    }
+  ]
+}

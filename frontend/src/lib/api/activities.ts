@@ -22,6 +22,7 @@ export async function createActivity(data: {
 	position?: number;
 	header?: string | null;
 	status?: string;
+	outcome?: string | null;
 	activity_date?: string | null;
 }): Promise<Activity> {
 	const res = await fetch(`${BASE}/`, {

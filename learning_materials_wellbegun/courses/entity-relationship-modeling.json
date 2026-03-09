@@ -1,0 +1,255 @@
+{
+  "id": "course_003",
+  "slug": "entity-relationship-modeling",
+  "title": "Entity-Relationship Modeling",
+  "technology": "SQL/SQLAlchemy",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "heard",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Entity-Relationship (ER) modeling is a way of designing how your data is structured and how different pieces of data relate to each other. If you have worked with pandas DataFrames, you have worked with entities (each DataFrame is like a table) and relationships (merging two DataFrames on a shared column). ER modeling formalizes this process.\n\nWellBegun manages eight entity types -- Note, Project, Source, Actor, Activity, Plan, Collection, and Log -- each stored in its own database table. The interesting part is how these entities connect: a Plan can have Activities, Sources can be linked to Projects, and any entity can be tagged. These connections are the \"relationships\" in ER modeling.\n\nUnderstanding ER modeling helps you see why the database has the tables it has, why some tables exist solely to link other tables together, and how the knowledge graph provides a flexible relationship mechanism beyond traditional foreign keys.",
+      "metadata": {
+        "key_takeaways": [
+          "Entities are the 'things' in your application (Note, Project, Source, etc.), each stored in a database table",
+          "Attributes are the properties of an entity (title, content, created_at)",
+          "Relationships connect entities: one-to-many, many-to-many via junction tables",
+          "Primary keys uniquely identify rows; foreign keys link rows across tables",
+          "WellBegun uses both traditional foreign keys and a flexible KnowledgeTriple system for relationships"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### Entities and Attributes\n\nAn **entity** is a distinct \"thing\" your application tracks. Each entity type maps to a SQLAlchemy model class and a database table. Each column is an **attribute**. The `id` column is the **primary key** -- a unique identifier for each row.\n\n### Relationships\n\nRelationships describe how entities connect:\n\n- **One-to-Many**: One entity owns many of another (e.g., a Plan has many Activities via `Activity.plan_id`)\n- **Many-to-Many**: Entities on both sides can have multiple connections, requiring a junction table (e.g., `entity_tags` connecting tags to entities)\n\n### Primary Keys and Foreign Keys\n\n- **Primary key** (`id`): uniquely identifies each row\n- **Foreign key** (`plan_id`, `tag_id`): references the primary key of another table, creating a link\n\n### Polymorphic References\n\nWellBegun uses `target_type` + `target_id` patterns (in `entity_tags`, `collection_items`, `knowledge_triples`) to reference any entity type from a single table. This trades database-enforced referential integrity for flexibility.",
+      "metadata": {
+        "key_takeaways": [
+          "Entities map to tables; attributes map to columns; primary keys uniquely identify rows",
+          "One-to-many uses a foreign key on the 'many' side; many-to-many uses a junction table",
+          "Foreign keys enforce referential integrity -- you cannot reference a row that does not exist",
+          "Polymorphic references (type + id) allow one table to link to any entity type"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun has eight primary entity types (Note, Project, Source, Actor, Activity, Plan, Collection, Log), each in its own table. Relationships are implemented through three mechanisms:\n\n1. **Direct foreign keys** (e.g., `Activity.plan_id`) for fixed, well-known relationships\n2. **KnowledgeTriple** for flexible, arbitrary relationships between any entity types\n3. **entity_tags / collection_items** as junction tables with polymorphic references",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "class Note(Base):\n    __tablename__ = \"notes\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n    content: Mapped[str | None] = mapped_column(Text, nullable=True)\n    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )\n    updated_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False\n    )",
+            "file_reference": "src/wellbegun/models/note.py:9-22",
+            "annotation": "A typical entity -- each attribute becomes a database column. The id is the primary key, auto-generated by the database."
+          },
+          {
+            "language": "python",
+            "code": "class KnowledgeTriple(Base):\n    __tablename__ = \"knowledge_triples\"\n    __table_args__ = (\n        UniqueConstraint(\n            \"subject_type\", \"subject_id\", \"object_type\", \"object_id\",\n            name=\"uq_knowledge_triple\",\n        ),\n    )\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)\n    subject_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    predicate: Mapped[str] = mapped_column(String(100), nullable=False)\n    object_type: Mapped[str] = mapped_column(String(20), nullable=False)\n    object_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )",
+            "file_reference": "src/wellbegun/models/knowledge_triple.py:9-27",
+            "annotation": "The knowledge graph -- each row is a subject-predicate-object triple linking two entities of any type. Example: (plan, 1, 'has activities', collection, 7)."
+          },
+          {
+            "language": "python",
+            "code": "class EntityTag(Base):\n    __tablename__ = \"entity_tags\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    tag_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    target_type: Mapped[str] = mapped_column(String(20), nullable=False)\n    target_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )\n\n    __table_args__ = (\n        UniqueConstraint(\"tag_id\", \"target_type\", \"target_id\"),\n    )",
+            "file_reference": "src/wellbegun/models/tag.py:26-42",
+            "annotation": "A polymorphic junction table -- connects any tag to any entity type via target_type + target_id."
+          },
+          {
+            "language": "python",
+            "code": "class CollectionItem(Base):\n    __tablename__ = \"collection_items\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    collection_id: Mapped[int] = mapped_column(\n        Integer, ForeignKey(\"entities.id\"), nullable=False\n    )\n    member_entity_type: Mapped[str] = mapped_column(String(30), nullable=False)\n    member_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)\n    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)\n    status: Mapped[str | None] = mapped_column(String(50), nullable=True)\n    notes: Mapped[str | None] = mapped_column(Text, nullable=True)\n    header: Mapped[str | None] = mapped_column(String(255), nullable=True)\n\n    __table_args__ = (\n        UniqueConstraint(\"collection_id\", \"member_entity_type\", \"member_entity_id\"),\n    )",
+            "file_reference": "src/wellbegun/models/collection.py:74-99",
+            "annotation": "CollectionItem -- a polymorphic junction table with extra metadata (position, status, notes) on the relationship itself."
+          },
+          {
+            "language": "python",
+            "code": "activities: Mapped[list[\"Activity\"]] = relationship(\n    \"Activity\",\n    foreign_keys=\"Activity.plan_id\",\n    order_by=\"Activity.position\",\n    lazy=\"joined\",\n)",
+            "file_reference": "src/wellbegun/models/plan.py:34-39",
+            "annotation": "A traditional one-to-many relationship -- Plan has many Activities via the plan_id foreign key on Activity."
+          },
+          {
+            "language": "python",
+            "code": "class Tag(Base):\n    __tablename__ = \"tags\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    name: Mapped[str] = mapped_column(String(255), nullable=False)\n    category: Mapped[str] = mapped_column(String(20), nullable=False)\n    full_tag: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)\n    entity_type: Mapped[str | None] = mapped_column(String(20), nullable=True)\n    entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)\n    color: Mapped[str | None] = mapped_column(String(7), nullable=True)\n    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)",
+            "file_reference": "src/wellbegun/models/tag.py:9-20",
+            "annotation": "Tags have dual roles: 'wild' tags (entity_type/entity_id are null) are generic labels; 'entity' tags reference a specific entity and are auto-created."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### How a Plan Relates to Activities, Sources, and Actors\n\n**Step 1: Direct foreign key (one-to-many)** -- Activities belong to a Plan via `Activity.plan_id`. This is the simplest relationship.\n\n**Step 2: Knowledge triples link to collections** -- For sources and actors, the Plan uses knowledge triples: `(plan, 1, 'has sources', collection, 8)` and `(plan, 1, 'has actors', collection, 9)`.\n\n**Step 3: Collections hold the actual members** -- Each Collection groups entities via CollectionItem rows with `member_entity_type` and `member_entity_id`.\n\nThe full relationship chain:\n```\nPlan #1  --[has activities]--> Collection #7 --[contains]--> Activity #10, Activity #11\nPlan #1  --[has sources]----> Collection #8 --[contains]--> Source #3\nPlan #1  --[has actors]-----> Collection #9 --[contains]--> Actor #2\n```\n\n### Why Two Relationship Mechanisms?\n\n- **Foreign keys** (like `Activity.plan_id`) are fast, database-enforced, and simple. Use for fixed relationships.\n- **Knowledge triples** are flexible and can express any relationship between any two entity types without schema changes. Use for evolving or arbitrary relationships.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "activities: Mapped[list[\"Activity\"]] = relationship(\n    \"Activity\",\n    foreign_keys=\"Activity.plan_id\",\n    order_by=\"Activity.position\",\n    lazy=\"joined\",\n)",
+            "file_reference": "src/wellbegun/models/plan.py:34-39",
+            "annotation": "Step 1: Direct FK relationship -- Plan.activities loaded via the plan_id foreign key on Activity."
+          },
+          {
+            "language": "text",
+            "code": "knowledge_triples table:\n| subject_type | subject_id | predicate        | object_type | object_id |\n|-------------|------------|------------------|-------------|----------|\n| plan        | 1          | has activities   | collection  | 7        |\n| plan        | 1          | has sources      | collection  | 8        |\n| plan        | 1          | has actors       | collection  | 9        |",
+            "file_reference": "src/wellbegun/models/knowledge_triple.py",
+            "annotation": "Step 2: Knowledge triples link Plan #1 to three separate Collections, one for each entity type."
+          },
+          {
+            "language": "text",
+            "code": "collection_items table (Collection #7):\n| collection_id | member_entity_type | member_entity_id | position | status |\n|--------------|-------------------|-----------------|----------|--------|\n| 7            | activity          | 10              | 0        | done   |\n| 7            | activity          | 11              | 1        | todo   |",
+            "file_reference": "src/wellbegun/models/collection.py",
+            "annotation": "Step 3: CollectionItem rows hold the actual members with position and status metadata."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Draw the ER Diagram\n\n**Task**: Draw an ER diagram showing the relationships between Plan, Activity, and Source. Include the knowledge_triples and collection_items tables.\n\n### Exercise 2: Identify Relationship Types\n\n**Task**: Classify each relationship: (1) Plan has many PlanItems, (2) Tags applied to entities via entity_tags, (3) Collection has many CollectionItems, (4) KnowledgeTriple links subject to object.\n\n### Exercise 3: Trace a Tag\n\n**Task**: When a Note is created, the service calls `create_entity_tag(db, title, \"note\", \"note\", note.id)`. What rows are created in the tags and entity_tags tables? Why does deleting call both `delete_entity_tag` and `delete_entity_graph_data`?",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Draw an ER diagram showing relationships between Plan, Activity, and Source. Include knowledge_triples and collection_items.",
+            "hints": [
+              "Activity has a plan_id foreign key -- direct one-to-many from Plan to Activity.",
+              "For Plan-to-Source: Plan -> KnowledgeTriple -> Collection -> CollectionItem -> Source."
+            ],
+            "solution_reference": "src/wellbegun/models/plan.py:34-39 (FK relationship), src/wellbegun/models/knowledge_triple.py (triples), src/wellbegun/models/collection.py:74-99 (collection items)"
+          },
+          {
+            "task": "Classify each relationship type: Plan-PlanItems, Tags-Entities, Collection-CollectionItems, KnowledgeTriple subject-object.",
+            "hints": [
+              "Look for foreign keys (one-to-many) vs junction tables (many-to-many) vs type+id patterns (polymorphic)."
+            ],
+            "solution_reference": "1. One-to-many (FK). 2. Many-to-many (polymorphic junction). 3. One-to-many (FK). 4. Polymorphic relationship."
+          },
+          {
+            "task": "Trace what create_entity_tag creates in the tags and entity_tags tables when a Note is created.",
+            "hints": [
+              "A Tag row is created with entity_type='note' and entity_id=note.id.",
+              "An EntityTag row links the new tag to the note."
+            ],
+            "solution_reference": "src/wellbegun/services/note_service.py:16-27 and src/wellbegun/services/tag_service.py"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of entity-relationship modeling as implemented in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What is a primary key?",
+            "options": [
+              "The first column defined in a table",
+              "A column that uniquely identifies each row in a table",
+              "A column that links to another table",
+              "The most important attribute of an entity"
+            ],
+            "correct_index": 1,
+            "explanation": "A primary key uniquely identifies each row. In WellBegun, every entity has an id column as its primary key, auto-generated by the database."
+          },
+          {
+            "question": "Why does WellBegun use target_type + target_id in entity_tags instead of separate foreign key columns?",
+            "options": [
+              "SQLite does not support foreign keys",
+              "It allows one junction table to connect tags to any entity type without schema changes",
+              "It makes queries faster",
+              "Pydantic requires this pattern"
+            ],
+            "correct_index": 1,
+            "explanation": "The polymorphic pattern uses two columns to reference any table, instead of needing separate note_id, project_id, source_id columns for each entity type."
+          },
+          {
+            "question": "What does a KnowledgeTriple represent?",
+            "options": [
+              "A three-column database table",
+              "A subject-predicate-object relationship between two entities",
+              "Three related entities",
+              "A triple-encrypted security token"
+            ],
+            "correct_index": 1,
+            "explanation": "Each KnowledgeTriple is a subject-predicate-object statement: (Plan #1, 'has activities', Collection #7) means Plan 1 links to Collection 7 as its activities list."
+          },
+          {
+            "question": "What type of relationship does Activity.plan_id represent?",
+            "options": [
+              "Many-to-many",
+              "One-to-one",
+              "One-to-many (one Plan has many Activities)",
+              "Polymorphic"
+            ],
+            "correct_index": 2,
+            "explanation": "Each Activity has at most one plan_id, but a Plan can have many Activities pointing to it. Defined in src/wellbegun/models/plan.py:34-39."
+          },
+          {
+            "question": "Why does WellBegun use Collections between Plans and Sources rather than a direct foreign key?",
+            "options": [
+              "SQLite limits the number of foreign keys per table",
+              "Collections add ordering, status, and notes to each relationship, and work with any entity type",
+              "Direct foreign keys are slower than collections",
+              "The frontend cannot display direct relationships"
+            ],
+            "correct_index": 1,
+            "explanation": "CollectionItem has position, status, and notes fields that a simple foreign key cannot provide. And since it uses member_entity_type + member_entity_id, the same mechanism works for any entity type."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of entity-relationship modeling.",
+      "metadata": {
+        "links": [
+          {
+            "title": "SQLAlchemy ORM Relationships",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/relationships.html",
+            "type": "official-docs"
+          },
+          {
+            "title": "Wikipedia: Entity-Relationship Model",
+            "url": "https://en.wikipedia.org/wiki/Entity%E2%80%93relationship_model",
+            "type": "reference"
+          },
+          {
+            "title": "Database Design Tutorial (Lucidchart)",
+            "url": "https://www.lucidchart.com/pages/database-diagram/database-design",
+            "type": "tutorial"
+          },
+          {
+            "title": "SQLAlchemy: Mapped Column Configuration",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/mapped_attributes.html",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,215 @@
+{
+  "id": "course_004",
+  "slug": "orm-concepts",
+  "title": "ORM Concepts",
+  "technology": "SQLAlchemy",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": ["entity-relationship-modeling"],
+    "knowledge": ["Basic SQL (SELECT, INSERT, UPDATE, DELETE)", "Python classes and attributes"]
+  },
+  "user_familiarity": "heard",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "An ORM (Object-Relational Mapper) bridges two worlds you already know separately: Python objects and SQL database tables. Instead of writing raw SQL strings to store and retrieve data, an ORM lets you work with regular Python classes. You define a class, and the ORM translates attribute access, object creation, and method calls into the corresponding SQL statements behind the scenes.\n\nAs a data scientist, you have likely used pandas DataFrames as an in-memory abstraction over tabular data. An ORM serves a similar purpose for persistent storage: it gives you a Pythonic interface so you can think in objects rather than in SQL strings. The ORM used in WellBegun is SQLAlchemy, the most widely adopted ORM in the Python ecosystem.",
+      "metadata": {
+        "key_takeaways": [
+          "An ORM maps Python classes to database tables and instances to rows",
+          "Column definitions on the class correspond to columns in the SQL table",
+          "You create, query, update, and delete records using Python objects, not raw SQL",
+          "A session manages the conversation between your code and the database, grouping operations into transactions"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### Mapping Classes to Tables\n\nThe fundamental idea: one Python class = one database table. The class name is for your Python code; the `__tablename__` attribute tells the ORM which SQL table it corresponds to.\n\n```python\nclass Note(Base):\n    __tablename__ = \"notes\"\n```\n\nThis declares that the `Note` class maps to the `notes` table in the database. `Base` is a shared base class that all ORM models inherit from, which registers them with SQLAlchemy's metadata system.\n\n### Columns as Attributes\n\nEach attribute on the class represents a column in the table. The Python type annotation (`Mapped[str]`) declares the Python-side type, while the `mapped_column(...)` call declares the SQL-side type and constraints:\n\n```python\ntitle: Mapped[str] = mapped_column(String(255), nullable=False)\n```\n\nThis line means: \"the `title` attribute is a Python `str` that maps to a `VARCHAR(255)` column that cannot be NULL.\"\n\n| Python Type | SQLAlchemy Type | SQL Column Type |\n|-------------|----------------|------------------|\n| `Mapped[int]` | `Integer` | `INTEGER` |\n| `Mapped[str]` | `String(255)` | `VARCHAR(255)` |\n| `Mapped[str]` | `Text` | `TEXT` |\n| `Mapped[bool]` | `Boolean` | `BOOLEAN` |\n| `Mapped[datetime]` | `DateTime` | `DATETIME` |\n\n### Relationships as Object References\n\nBeyond simple columns, ORMs can express foreign-key relationships as Python object references. For example, if a `Note` belonged to a `Project`, you could navigate from a note object directly to its project object without writing a JOIN query. WellBegun uses knowledge triples for most relationships, but the concept applies broadly.\n\n### Sessions and Transactions\n\nA **session** is the ORM's unit of work. It tracks which objects have been created, modified, or deleted, and when you call `commit()`, it flushes all pending changes to the database in a single transaction.\n\n```python\ndb.add(note)      # Stage the new object (not yet in DB)\ndb.commit()       # Write all staged changes to the database\ndb.refresh(note)  # Reload the object from DB (e.g., to get auto-generated id)\n```\n\nThink of the session as a staging area, similar to how `git add` stages files before `git commit` writes them.\n\n### Identity Map\n\nThe session maintains an **identity map**: if you query for the same row twice within one session, you get back the exact same Python object, not a copy. This prevents inconsistencies where two different objects represent the same database row with different attribute values.",
+      "metadata": {
+        "key_takeaways": [
+          "One Python class maps to one database table via __tablename__",
+          "Mapped[type] + mapped_column() defines both the Python type and SQL column type",
+          "The session is a unit of work: add() stages, commit() persists, refresh() reloads",
+          "The identity map ensures one Python object per database row per session",
+          "Relationships let you navigate between related objects without writing JOIN queries"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun defines its ORM models in `src/wellbegun/models/`, one file per entity type. The `Note` model in `src/wellbegun/models/note.py` is a clean example:\n\n```python\nclass Note(Base):\n    __tablename__ = \"notes\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n    content: Mapped[str | None] = mapped_column(Text, nullable=True)\n    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )\n    updated_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False\n    )\n```\n\nThis class translates to a SQL table with matching columns. The `onupdate=datetime.utcnow` on `updated_at` automatically refreshes the timestamp whenever any attribute changes.\n\nThe database session is created in `src/wellbegun/database.py` via a generator function that FastAPI calls per request:\n\n```python\ndef get_db() -> Generator[Session]:\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()\n```\n\nEach HTTP request gets its own session, ensuring isolation between concurrent requests.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "class Note(Base):\n    __tablename__ = \"notes\"\n\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n    content: Mapped[str | None] = mapped_column(Text, nullable=True)\n    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)\n    created_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, nullable=False\n    )\n    updated_at: Mapped[datetime] = mapped_column(\n        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False\n    )",
+            "file_reference": "src/wellbegun/models/note.py:9-22",
+            "annotation": "The Note model maps to the 'notes' table. Each Mapped[type] + mapped_column() pair defines a column with its Python type, SQL type, and constraints."
+          },
+          {
+            "language": "python",
+            "code": "def get_db() -> Generator[Session]:\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()",
+            "file_reference": "src/wellbegun/database.py:16-21",
+            "annotation": "The get_db generator provides a fresh session per request and ensures it is always closed, even if an error occurs."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: Creating a Note (Python Objects to SQL INSERT)\n\nWhen the service layer creates a note:\n\n```python\ndef create(db: Session, title: str, content: str | None = None) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note\n```\n\nThe ORM translates this into:\n\n| Python Code | SQL Equivalent |\n|------------|----------------|\n| `Note(title=\"My Idea\", content=\"...\")` | (In-memory object, no SQL yet) |\n| `db.add(note)` | (Marks as pending, no SQL yet) |\n| `db.flush()` | `INSERT INTO notes (title, content, ...) VALUES ('My Idea', '...', ...)` |\n| `db.commit()` | `COMMIT` |\n| `db.refresh(note)` | `SELECT * FROM notes WHERE id = 1` |\n\n### Example 2: Querying Notes (SQL SELECT to Python Objects)\n\n```python\ndef get_all(db: Session) -> list[Note]:\n    return db.query(Note).order_by(Note.created_at.desc()).all()\n```\n\nTranslates to: `SELECT * FROM notes ORDER BY created_at DESC;`\n\nThe result is a list of `Note` objects, not tuples or dicts.\n\n### Example 3: Updating a Note (Attribute Assignment to SQL UPDATE)\n\n```python\ndef update(db: Session, note_id: int, **kwargs) -> Note | None:\n    note = get_by_id(db, note_id)\n    for key, value in kwargs.items():\n        if hasattr(note, key):\n            setattr(note, key, value)\n    db.commit()\n    db.refresh(note)\n    return note\n```\n\nSimply setting `note.title = \"New Title\"` via `setattr` is enough. The ORM detects the change and generates:\n`UPDATE notes SET title = 'New Title', updated_at = '...' WHERE id = 42;`",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "def create(db: Session, title: str, content: str | None = None) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:16-27",
+            "annotation": "Creating a Note object, staging it, flushing to get the auto-generated id, then committing the transaction."
+          },
+          {
+            "language": "python",
+            "code": "def get_all(db: Session) -> list[Note]:\n    return db.query(Note).order_by(Note.created_at.desc()).all()",
+            "file_reference": "src/wellbegun/services/note_service.py:8-9",
+            "annotation": "Querying all notes, ordered by creation date. The ORM returns a list of Note objects."
+          },
+          {
+            "language": "python",
+            "code": "def update(db: Session, note_id: int, **kwargs) -> Note | None:\n    note = get_by_id(db, note_id)\n    if not note:\n        return None\n    for key, value in kwargs.items():\n        if hasattr(note, key):\n            setattr(note, key, value)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:30-41",
+            "annotation": "The ORM tracks attribute changes on loaded objects. setattr() modifies the Python object; commit() generates the SQL UPDATE."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Map a Model to SQL\n\n**Task**: Open `src/wellbegun/models/project.py` and examine the `Project` class. For each attribute (`id`, `title`, `description`, `status`, `is_active`, `is_archived`, `start_date`, `created_at`, `updated_at`), write down: (a) the Python type, (b) the SQL column type, and (c) whether it can be NULL.\n\n<details>\n<summary>Hint</summary>\nLook at each `mapped_column(...)` call. The first argument is the SQL type (e.g., `String(50)`, `Text`, `Boolean`). The `nullable` keyword tells you whether NULL is allowed. `Mapped[str | None]` on the Python side means the value can be `None`.\n</details>\n\n### Exercise 2: Predict the SQL\n\n**Task**: Given the following Python code, write the SQL statement the ORM would generate:\n\n```python\nproject = Project(title=\"WellBegun\", description=\"A note-taking app\", status=\"in_progress\")\ndb.add(project)\ndb.commit()\n```\n\n<details>\n<summary>Hint</summary>\nThis is an INSERT statement. The columns are title, description, status, plus any columns with default values (is_active, is_archived, created_at, updated_at). The defaults for is_active and is_archived are False (0 in SQL).\n</details>",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Open src/wellbegun/models/project.py and examine the Project class. For each attribute, write down: (a) the Python type, (b) the SQL column type, and (c) whether it can be NULL.",
+            "hints": [
+              "Look at each mapped_column(...) call. The first argument is the SQL type.",
+              "The nullable keyword tells you whether NULL is allowed.",
+              "Mapped[str | None] on the Python side means the value can be None (NULL in SQL)."
+            ],
+            "solution_reference": "src/wellbegun/models/project.py:9-24"
+          },
+          {
+            "task": "Given Project(title='WellBegun', description='A note-taking app', status='in_progress') followed by db.add() and db.commit(), write the SQL INSERT statement the ORM would generate.",
+            "hints": [
+              "This is an INSERT statement into the 'projects' table.",
+              "Include columns with default values: is_active (False), is_archived (False), created_at, updated_at.",
+              "start_date has no value provided and is nullable, so it will be NULL."
+            ],
+            "solution_reference": "src/wellbegun/models/project.py:9-24"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of ORM concepts as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What does __tablename__ = \"notes\" do in a SQLAlchemy model class?",
+            "options": [
+              "Creates a Python variable named \"notes\"",
+              "Maps the class to a database table called \"notes\"",
+              "Imports the notes module",
+              "Sets the display name for the admin interface"
+            ],
+            "correct_index": 1,
+            "explanation": "This tells SQLAlchemy which SQL table the Python class corresponds to. Without it, the ORM would not know where to store or retrieve data for this class."
+          },
+          {
+            "question": "What is the difference between db.flush() and db.commit()?",
+            "options": [
+              "They are identical",
+              "flush() sends SQL to the database but does not finalize; commit() makes changes permanent",
+              "flush() is for reads, commit() is for writes",
+              "flush() only works with INSERT, commit() works with all operations"
+            ],
+            "correct_index": 1,
+            "explanation": "flush() executes the SQL (so auto-generated values like id become available) but the transaction remains open. commit() finalizes the transaction. If an error occurs after flush but before commit, changes roll back."
+          },
+          {
+            "question": "In the Note model, content: Mapped[str | None] = mapped_column(Text, nullable=True). What does nullable=True mean?",
+            "options": [
+              "The column must always have a value",
+              "The column can store NULL (i.e., no value) in the database",
+              "The column will be automatically filled with an empty string",
+              "The column is optional in Python but required in SQL"
+            ],
+            "correct_index": 1,
+            "explanation": "nullable=True means the SQL column allows NULL values. The Python-side Mapped[str | None] mirrors this by allowing the attribute to be None."
+          },
+          {
+            "question": "Why does the update function in note_service.py not need an explicit SQL UPDATE statement?",
+            "options": [
+              "It uses raw SQL internally",
+              "The ORM session tracks changes to loaded objects and generates UPDATE statements on commit",
+              "FastAPI handles the database updates automatically",
+              "The setattr function writes directly to the database"
+            ],
+            "correct_index": 1,
+            "explanation": "When you modify attributes on an ORM object tracked by the session, SQLAlchemy detects the changes ('dirty' state) and generates the appropriate UPDATE SQL when commit() is called."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of ORM concepts.",
+      "metadata": {
+        "links": [
+          {
+            "title": "SQLAlchemy ORM Tutorial",
+            "url": "https://docs.sqlalchemy.org/en/20/tutorial/",
+            "type": "official-docs"
+          },
+          {
+            "title": "SQLAlchemy Mapped Column Documentation",
+            "url": "https://docs.sqlalchemy.org/en/20/orm/mapped_attributes.html",
+            "type": "official-docs"
+          },
+          {
+            "title": "FastAPI with SQLAlchemy",
+            "url": "https://fastapi.tiangolo.com/tutorial/sql-databases/",
+            "type": "tutorial"
+          },
+          {
+            "title": "ORM Patterns: Identity Map",
+            "url": "https://martinfowler.com/eaaCatalog/identityMap.html",
+            "type": "article"
+          }
+        ]
+      }
+    }
+  ]
+}

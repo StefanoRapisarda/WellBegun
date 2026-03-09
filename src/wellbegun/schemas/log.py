@@ -48,6 +48,7 @@ class ActivityCreate(BaseModel):
     position: int = 0
     header: str | None = None
     status: str = "todo"
+    outcome: str | None = None
     activity_date: datetime | None = None
 
 
@@ -56,6 +57,7 @@ class ActivityUpdate(BaseModel):
     description: str | None = None
     duration: int | None = None
     status: str | None = None
+    outcome: str | None = None
     plan_id: int | None = None
 
     source_id: int | None = None
@@ -76,6 +78,7 @@ class ActivityOut(BaseModel):
     position: int
     header: str | None = None
     status: str
+    outcome: str | None = None
     activity_date: datetime | None = None
     is_active: bool
     is_archived: bool

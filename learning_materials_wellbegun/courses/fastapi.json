@@ -1,0 +1,437 @@
+{
+  "course_slug": "fastapi",
+  "title": "FastAPI for Python Developers",
+  "technology": "FastAPI",
+  "category": "framework",
+  "difficulty": "beginner",
+  "estimated_minutes": 25,
+  "prerequisites": ["rest-apis"],
+  "user_context": {
+    "role": "Data scientist / researcher",
+    "experience_years": 10,
+    "primary_skills": ["Python", "data analysis", "statistical modeling"],
+    "familiarity_with_topic": "none/heard",
+    "bridging_notes": "Leverages strong Python typing knowledge. Compares FastAPI decorators to pytest decorators, Depends to pytest fixtures, and async generators to lazy data processing generators."
+  },
+  "sections": [
+    {
+      "type": "overview",
+      "title": "Overview",
+      "content": "FastAPI is a modern Python web framework that lets you build REST APIs using the same Python type hints you already use every day. If you have written a Python function with type hints, you already know 80% of what FastAPI needs. Where Flask requires you to manually parse request bodies and validate parameters, FastAPI reads your function signatures and does that work for you -- turning Python type annotations into automatic request validation, serialization, and interactive API documentation.",
+      "key_takeaways": [
+        "FastAPI uses Python type hints to auto-validate requests and generate docs",
+        "Routers group related endpoints (like Python modules group related functions)",
+        "Dependency injection (Depends) replaces global state -- similar to how pytest fixtures inject test dependencies",
+        "Async support is built in for I/O-bound operations like calling an LLM"
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Decorators Define Routes",
+      "concept_id": "decorators-define-routes",
+      "content": "In Python, decorators add behavior to functions without changing their code. You have likely used @pytest.mark.parametrize to run a test with multiple inputs, or @property to make a method behave like an attribute. FastAPI uses the same pattern: a decorator like @router.get(\"/\") takes a normal Python function and registers it as an HTTP endpoint. The response_model parameter tells FastAPI to validate and serialize the return value before sending it as JSON.",
+      "code_examples": [
+        {
+          "title": "GET endpoint with decorator and response model",
+          "language": "python",
+          "code": "@router.get(\"/\", response_model=list[CollectionOut])\ndef list_collections(category_id: int | None = None, db: Session = Depends(get_db)):\n    return collection_service.get_all(db, category_id=category_id)",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "18-20"
+          },
+          "explanation": "The @router.get(\"/\") decorator registers this function to handle GET requests at the router's base path. response_model=list[CollectionOut] tells FastAPI to validate and serialize the return value as a list of CollectionOut Pydantic models."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Path and Query Parameters",
+      "concept_id": "path-and-query-parameters",
+      "content": "FastAPI reads your function signature to decide where each parameter comes from. Parameters matching {placeholders} in the route path become path parameters, extracted from the URL itself (e.g., /collections/7). Parameters with default values that do not match a placeholder become query parameters, appended after a ? in the URL (e.g., /collections?category_id=3). Type hints drive automatic validation and conversion -- if category_id is typed as int and the client sends 'abc', FastAPI returns a 422 error automatically.",
+      "code_examples": [
+        {
+          "title": "Optional query parameter with type validation",
+          "language": "python",
+          "code": "@router.get(\"/\", response_model=list[CollectionOut])\ndef list_collections(category_id: int | None = None, db: Session = Depends(get_db)):\n    return collection_service.get_all(db, category_id=category_id)",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "18-20"
+          },
+          "explanation": "category_id: int | None = None becomes an optional query parameter. FastAPI parses ?category_id=3 into the integer 3, or uses None if omitted. Sending ?category_id=abc returns a 422 validation error automatically."
+        },
+        {
+          "title": "Path parameter with 404 handling",
+          "language": "python",
+          "code": "@router.get(\"/{collection_id}\", response_model=CollectionOut)\ndef get_collection(collection_id: int, db: Session = Depends(get_db)):\n    collection = collection_service.get_by_id(db, collection_id)\n    if not collection:\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return collection",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "23-28"
+          },
+          "explanation": "The {collection_id} in the route path matches the collection_id: int parameter. A request to GET /collections/7 passes 7 as an integer. The type hint int tells both Python and FastAPI to validate and convert the URL segment."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Request/Response Models (Pydantic)",
+      "concept_id": "request-response-models",
+      "content": "For POST and PUT requests, the client sends a JSON body. FastAPI uses Pydantic models to parse and validate that body. If you have used dataclasses, Pydantic models will feel familiar -- they are classes with typed fields, but they also validate data at runtime. The response_model validates and serializes the return value, and status_code overrides the default 200. For partial updates, model_dump(exclude_unset=True) converts only the fields the client actually sent into a dictionary.",
+      "code_examples": [
+        {
+          "title": "POST endpoint with Pydantic request body and custom status code",
+          "language": "python",
+          "code": "@router.post(\"/\", response_model=CollectionOut, status_code=201)\ndef create_collection(data: CollectionCreate, db: Session = Depends(get_db)):\n    return collection_service.create(\n        db,\n        title=data.title,\n        category_id=data.category_id,\n        description=data.description,\n    )",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "31-38"
+          },
+          "explanation": "data: CollectionCreate tells FastAPI to parse the JSON body and validate it against the CollectionCreate schema. If required fields are missing or wrong type, FastAPI returns 422 before the function runs. status_code=201 indicates resource creation."
+        },
+        {
+          "title": "Pydantic schema defining request validation rules",
+          "language": "python",
+          "code": "class CollectionCreate(BaseModel):\n    title: str\n    category_id: int\n    description: str | None = None",
+          "file_reference": {
+            "path": "src/wellbegun/schemas/collection.py",
+            "lines": "37-40"
+          },
+          "explanation": "title (str, required) and category_id (int, required) must be present in the JSON body. description is optional with a None default. Pydantic validates types at runtime -- no manual checking needed."
+        },
+        {
+          "title": "PUT endpoint with partial update via model_dump",
+          "language": "python",
+          "code": "@router.put(\"/{collection_id}\", response_model=CollectionOut)\ndef update_collection(\n    collection_id: int, data: CollectionUpdate, db: Session = Depends(get_db)\n):\n    updates = data.model_dump(exclude_unset=True)\n    collection = collection_service.update(db, collection_id, **updates)\n    if not collection:\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return collection",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "41-49"
+          },
+          "explanation": "model_dump(exclude_unset=True) includes only the fields the client actually sent. If the client sends {\"title\": \"New Name\"} without description, only title appears in the updates dict, preventing accidental overwrites."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Dependency Injection",
+      "concept_id": "dependency-injection",
+      "content": "FastAPI's dependency injection system works just like pytest fixtures. You define a function that yields a resource (e.g., a database session), and FastAPI calls it before each endpoint, passes the result, and runs cleanup afterward. This replaces global variables and module-level singletons with explicit, testable dependencies. Every WellBegun endpoint that needs a database session declares db: Session = Depends(get_db).",
+      "code_examples": [
+        {
+          "title": "Database session dependency (generator with cleanup)",
+          "language": "python",
+          "code": "def get_db() -> Generator[Session]:\n    db = SessionLocal()\n    try:\n        yield db\n    finally:\n        db.close()",
+          "file_reference": {
+            "path": "src/wellbegun/database.py",
+            "lines": "16-21"
+          },
+          "explanation": "This generator yields a database session, then closes it in the finally block -- even if the endpoint raises an exception. FastAPI calls this before each endpoint and passes the yielded value as the db parameter. Identical pattern to a pytest yield fixture."
+        },
+        {
+          "title": "Endpoint consuming the dependency",
+          "language": "python",
+          "code": "@router.get(\"/\", response_model=list[CollectionOut])\ndef list_collections(category_id: int | None = None, db: Session = Depends(get_db)):\n    return collection_service.get_all(db, category_id=category_id)",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "18-20"
+          },
+          "explanation": "db: Session = Depends(get_db) tells FastAPI to call get_db(), pass the yielded Session as db, and run cleanup after. You never manually open or close database connections in endpoint code."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Error Handling with HTTPException",
+      "concept_id": "error-handling",
+      "content": "When something goes wrong, FastAPI uses HTTPException to communicate HTTP errors. Raising HTTPException stops the function and sends a JSON response with the specified status code and detail message. For service-layer errors, routers catch Python exceptions (like ValueError) and translate them to appropriate HTTP status codes, keeping the service layer free of HTTP concerns.",
+      "code_examples": [
+        {
+          "title": "404 Not Found for missing resources",
+          "language": "python",
+          "code": "@router.get(\"/{collection_id}\", response_model=CollectionOut)\ndef get_collection(collection_id: int, db: Session = Depends(get_db)):\n    collection = collection_service.get_by_id(db, collection_id)\n    if not collection:\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return collection",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "23-28"
+          },
+          "explanation": "Raising HTTPException(status_code=404) stops execution and sends {\"detail\": \"Collection not found\"} as JSON with HTTP status 404. FastAPI catches it and formats the response -- no try/except at the caller level."
+        },
+        {
+          "title": "Catching service-layer ValueError as HTTP 422",
+          "language": "python",
+          "code": "@router.post(\"/{collection_id}/items\", response_model=CollectionItemOut, status_code=201)\ndef add_item(\n    collection_id: int, data: CollectionItemCreate, db: Session = Depends(get_db)\n):\n    try:\n        return collection_service.add_item(\n            db,\n            collection_id=collection_id,\n            member_entity_type=data.member_entity_type,\n            member_entity_id=data.member_entity_id,\n            position=data.position,\n            status=data.status,\n            notes=data.notes,\n            header=data.header,\n        )\n    except ValueError as e:\n        raise HTTPException(status_code=422, detail=str(e))",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "95-111"
+          },
+          "explanation": "The service layer raises a plain ValueError (e.g., 'Invalid status'). The router catches it and translates it to HTTP 422 (Unprocessable Entity). This keeps the service layer free of HTTP concepts -- it raises Python exceptions, and the router decides the HTTP status code."
+        }
+      ]
+    },
+    {
+      "type": "context",
+      "title": "In This Project",
+      "content": "WellBegun follows a three-layer architecture: main.py creates the FastAPI app and registers routers; each router module defines HTTP endpoints with decorators, validates input via Pydantic, and translates errors to HTTP status codes; service modules contain pure Python business logic with no HTTP concepts. The app uses a lifespan handler for startup tasks (database creation, migrations, seeding, health checks), CORS middleware to allow frontend access, and 20+ routers registered with an /api prefix.",
+      "architecture_notes": "main.py (app setup, lifespan, CORS, router registration) -> routers/ (HTTP layer: decorators, validation, error translation) -> services/ (business logic: pure Python, raises ValueError) -> models/ (SQLAlchemy ORM)",
+      "code_examples": [
+        {
+          "title": "Application lifespan handler (startup/shutdown)",
+          "language": "python",
+          "code": "@asynccontextmanager\nasync def lifespan(app: FastAPI) -> AsyncIterator[None]:\n    Base.metadata.create_all(bind=engine)\n    _run_migrations(engine)\n    db = SessionLocal()\n    try:\n        seed_wild_tags(db)\n        seed_categories(db)\n        _migrate_plan_collections(db)\n    finally:\n        db.close()\n    try:\n        healthy = await llm_service.check_health()\n        if healthy:\n            print(\"[WellBegun] Ollama is reachable\")\n        else:\n            print(\"[WellBegun] Ollama is not reachable\")\n    except Exception:\n        print(\"[WellBegun] Ollama health check failed\")\n    yield\n\napp = FastAPI(title=\"WellBegun\", lifespan=lifespan)",
+          "file_reference": {
+            "path": "src/wellbegun/main.py",
+            "lines": "411-434"
+          },
+          "explanation": "The lifespan async context manager runs startup tasks before yield (database setup, migrations, seeding, Ollama health check) and could run shutdown tasks after yield. The app is created with this lifespan handler."
+        },
+        {
+          "title": "CORS middleware configuration",
+          "language": "python",
+          "code": "app.add_middleware(\n    CORSMiddleware,\n    allow_origins=settings.cors_origins,\n    allow_credentials=True,\n    allow_methods=[\"*\"],\n    allow_headers=[\"*\"],\n)",
+          "file_reference": {
+            "path": "src/wellbegun/main.py",
+            "lines": "436-442"
+          },
+          "explanation": "CORS middleware allows the Svelte frontend (running on a different port during development) to make requests to the API. Without this, browsers would block cross-origin requests."
+        },
+        {
+          "title": "Router registration with API prefix",
+          "language": "python",
+          "code": "app.include_router(health.router, prefix=\"/api\")\napp.include_router(tags.router, prefix=\"/api\")\napp.include_router(projects.router, prefix=\"/api\")\n# ... 18 more routers ...\napp.include_router(collections.router, prefix=\"/api\")\napp.include_router(workspaces.router, prefix=\"/api\")",
+          "file_reference": {
+            "path": "src/wellbegun/main.py",
+            "lines": "444-465"
+          },
+          "explanation": "Each router is registered with prefix='/api'. Since the collections router already has prefix='/collections', the final URL becomes /api/collections/. Each router is an independent module that can be developed and tested separately."
+        },
+        {
+          "title": "Router definition with prefix and tags",
+          "language": "python",
+          "code": "router = APIRouter(prefix=\"/collections\", tags=[\"collections\"])",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "15"
+          },
+          "explanation": "APIRouter groups related endpoints under a common prefix. The tags parameter groups endpoints in the auto-generated API documentation."
+        },
+        {
+          "title": "Service layer function (no HTTP concepts)",
+          "language": "python",
+          "code": "def create(\n    db: Session,\n    title: str,\n    category_id: int,\n    description: str | None = None,\n) -> Collection:\n    collection = Collection(\n        title=title,\n        category_id=category_id,\n        description=description,\n    )\n    db.add(collection)\n    db.flush()\n    create_entity_tag(db, title, \"collection\", \"collection\", collection.id)\n    db.commit()\n    db.refresh(collection)\n    return collection",
+          "file_reference": {
+            "path": "src/wellbegun/services/collection_service.py",
+            "lines": "30-46"
+          },
+          "explanation": "The service function is pure Python -- no HTTP concepts, no request objects, no status codes. It receives typed arguments, interacts with the database through SQLAlchemy, and returns a Collection ORM object."
+        }
+      ]
+    },
+    {
+      "type": "example",
+      "title": "A Complete Request Journey (Creating a Collection)",
+      "example_id": "request-journey-create-collection",
+      "content": "Trace what happens when the frontend sends POST /api/collections with {\"title\": \"Research Papers\", \"category_id\": 2}. Step 1 (Routing): FastAPI matches URL + method to create_collection. Step 2 (Dependency injection): FastAPI calls get_db() and passes the Session as db. Step 3 (Request validation): FastAPI parses JSON and validates against CollectionCreate; missing/wrong-type fields return 422 automatically. Step 4 (Service layer): The router calls collection_service.create() which is pure Python with no HTTP concepts. Step 5 (Response serialization): FastAPI validates the return value against CollectionOut and serializes to JSON with status 201. Step 6 (Cleanup): The finally block in get_db() closes the database session.",
+      "code_examples": [
+        {
+          "title": "Router endpoint (entry point)",
+          "language": "python",
+          "code": "@router.post(\"/\", response_model=CollectionOut, status_code=201)\ndef create_collection(data: CollectionCreate, db: Session = Depends(get_db)):\n    return collection_service.create(\n        db,\n        title=data.title,\n        category_id=data.category_id,\n        description=data.description,\n    )",
+          "file_reference": {
+            "path": "src/wellbegun/routers/collections.py",
+            "lines": "31-38"
+          },
+          "explanation": "The POST endpoint: FastAPI validates the request body against CollectionCreate, injects the database session via Depends(get_db), and delegates to the service layer."
+        },
+        {
+          "title": "Service layer (business logic)",
+          "language": "python",
+          "code": "def create(\n    db: Session,\n    title: str,\n    category_id: int,\n    description: str | None = None,\n) -> Collection:\n    collection = Collection(\n        title=title,\n        category_id=category_id,\n        description=description,\n    )\n    db.add(collection)\n    db.flush()\n    create_entity_tag(db, title, \"collection\", \"collection\", collection.id)\n    db.commit()\n    db.refresh(collection)\n    return collection",
+          "file_reference": {
+            "path": "src/wellbegun/services/collection_service.py",
+            "lines": "30-46"
+          },
+          "explanation": "Pure Python: creates a Collection ORM object, adds it to the database, creates an associated tag, commits, and returns the refreshed object. No HTTP concepts."
+        }
+      ]
+    },
+    {
+      "type": "example",
+      "title": "Async Patterns in the LLM Service",
+      "example_id": "async-llm-patterns",
+      "content": "Most WellBegun endpoints are synchronous (plain def), which is fine for database queries. But calling an external LLM over HTTP can take seconds, and blocking would prevent the server from handling other requests. The LLM service uses async def with httpx for non-blocking HTTP calls, and an async generator for streaming tokens as they arrive.",
+      "code_examples": [
+        {
+          "title": "Single-shot async generation",
+          "language": "python",
+          "code": "async def generate(prompt: str, system: str = \"\", temperature: float | None = None) -> str:\n    \"\"\"Single-shot generation. Returns full response text.\"\"\"\n    payload: dict = {\n        \"model\": get_active_model(),\n        \"prompt\": prompt,\n        \"stream\": False,\n    }\n    if system:\n        payload[\"system\"] = system\n    if temperature is not None:\n        payload[\"options\"] = {\"temperature\": temperature}\n    try:\n        async with httpx.AsyncClient(timeout=120) as client:\n            r = await client.post(\n                f\"{settings.llm_base_url}/api/generate\",\n                json=payload,\n            )\n            r.raise_for_status()\n            return r.json()[\"response\"]\n    except httpx.HTTPError as exc:\n        raise OllamaUnavailableError(f\"Ollama request failed: {exc}\") from exc",
+          "file_reference": {
+            "path": "src/wellbegun/services/llm_service.py",
+            "lines": "52-72"
+          },
+          "explanation": "async def declares a coroutine. async with httpx.AsyncClient() creates a non-blocking HTTP client. await client.post() suspends this function while waiting for the LLM response, freeing the event loop to handle other requests."
+        },
+        {
+          "title": "Streaming async generation (async generator)",
+          "language": "python",
+          "code": "async def stream_generate(prompt: str, system: str = \"\") -> AsyncIterator[str]:\n    \"\"\"Streaming generation. Yields tokens as they arrive.\"\"\"\n    payload: dict = {\n        \"model\": get_active_model(),\n        \"prompt\": prompt,\n        \"stream\": True,\n    }\n    if system:\n        payload[\"system\"] = system\n    try:\n        async with httpx.AsyncClient(timeout=300) as client:\n            async with client.stream(\n                \"POST\",\n                f\"{settings.llm_base_url}/api/generate\",\n                json=payload,\n            ) as response:\n                response.raise_for_status()\n                async for line in response.aiter_lines():\n                    if not line:\n                        continue\n                    chunk = json.loads(line)\n                    token = chunk.get(\"response\", \"\")\n                    if token:\n                        yield token\n                    if chunk.get(\"done\"):\n                        break\n    except httpx.HTTPError as exc:\n        raise OllamaUnavailableError(f\"Ollama stream failed: {exc}\") from exc",
+          "file_reference": {
+            "path": "src/wellbegun/services/llm_service.py",
+            "lines": "75-102"
+          },
+          "explanation": "An async generator (async def with yield) that reads the HTTP response line by line as the LLM produces tokens. Each token is yielded immediately to the caller. If you have used Python generators for lazy data processing, this is the async equivalent."
+        },
+        {
+          "title": "Async health check",
+          "language": "python",
+          "code": "async def check_health() -> bool:\n    \"\"\"Return True if Ollama is reachable.\"\"\"\n    try:\n        async with httpx.AsyncClient(timeout=5) as client:\n            r = await client.get(f\"{settings.llm_base_url}/api/tags\")\n            return r.status_code == 200\n    except httpx.HTTPError:\n        return False",
+          "file_reference": {
+            "path": "src/wellbegun/services/llm_service.py",
+            "lines": "42-49"
+          },
+          "explanation": "A simple async health check that returns True/False. Uses a short timeout (5s) and catches connection errors gracefully. Called during app startup in the lifespan handler."
+        }
+      ]
+    },
+    {
+      "type": "exercise",
+      "title": "Compare Plans and Collections Routers",
+      "exercise_id": "compare-plans-collections",
+      "difficulty": "beginner",
+      "instructions": "Open src/wellbegun/routers/plans.py and compare it with src/wellbegun/routers/collections.py. Answer these questions: (1) Both routers define standard CRUD endpoints. What extra parameter does the plans DELETE endpoint accept that collections does not? What does it do? (2) Plans has additional nested endpoints like /{plan_id}/sources/{source_id} and /{plan_id}/activity-group. What pattern do these follow -- are they separate routers or nested under the same router? (3) Look at how both routers handle the service layer returning None. Is the pattern consistent?",
+      "files_to_explore": [
+        "src/wellbegun/routers/plans.py",
+        "src/wellbegun/routers/collections.py"
+      ],
+      "hints": [
+        "Look at plans.py line 60: def delete_plan(plan_id: int, cascade: bool = False, ...) -- the cascade parameter is a query parameter with a default of False.",
+        "The nested endpoints are all on the same plans router. FastAPI does not require nested routers for nested URLs.",
+        "Both routers consistently check if not result: raise HTTPException(status_code=404, ...)."
+      ]
+    },
+    {
+      "type": "exercise",
+      "title": "Trace the Dependency Injection Chain",
+      "exercise_id": "trace-dependency-injection",
+      "difficulty": "beginner",
+      "instructions": "Starting from any endpoint in collections.py, trace the dependency injection chain: (1) Open src/wellbegun/database.py. The get_db function is a generator that yields a Session. How is this similar to a pytest fixture with yield? (2) What happens if the endpoint raises an exception -- does the database session still get closed? Look at the finally block. (3) The get_db function uses SessionLocal(), which is created from sessionmaker(bind=engine). Where is engine configured? (4) Could you add a second dependency -- say, a function that checks for an API key in the request headers? How would you declare it in an endpoint signature?",
+      "files_to_explore": [
+        "src/wellbegun/database.py",
+        "src/wellbegun/routers/collections.py",
+        "src/wellbegun/config.py"
+      ],
+      "hints": [
+        "The finally block in get_db guarantees db.close() runs even if an exception occurs -- exactly like a pytest yield fixture.",
+        "To add another dependency, write a function like def verify_api_key(x_api_key: str = Header(...)) and add key: str = Depends(verify_api_key) to the endpoint signature. FastAPI resolves dependencies in order."
+      ]
+    },
+    {
+      "type": "quiz",
+      "title": "Knowledge Check",
+      "questions": [
+        {
+          "question_id": "q1-response-model",
+          "question": "What does response_model=CollectionOut do in a FastAPI endpoint decorator?",
+          "type": "multiple_choice",
+          "options": [
+            "It validates the request body against the CollectionOut schema",
+            "It validates and serializes the return value, stripping extra fields before sending JSON",
+            "It generates a CollectionOut object automatically from the database",
+            "It imports the CollectionOut class from the schemas module"
+          ],
+          "correct_answer": 1,
+          "explanation": "The response_model validates the function's return value against the schema and serializes it to JSON, filtering out any fields not defined in the model."
+        },
+        {
+          "question_id": "q2-path-vs-query",
+          "question": "How does FastAPI decide whether a function parameter is a path parameter or a query parameter?",
+          "type": "multiple_choice",
+          "options": [
+            "Path parameters use uppercase names, query parameters use lowercase",
+            "You must explicitly annotate each parameter with Path() or Query()",
+            "Parameters matching {placeholders} in the route path become path params; others with defaults become query params",
+            "All parameters are query parameters by default"
+          ],
+          "correct_answer": 2,
+          "explanation": "FastAPI matches parameter names to {placeholders} in the route path. Parameters that match become path parameters; remaining parameters with default values become query parameters."
+        },
+        {
+          "question_id": "q3-depends",
+          "question": "What problem does Depends(get_db) solve compared to using a global database session?",
+          "type": "multiple_choice",
+          "options": [
+            "It makes the code run faster by caching database connections",
+            "It ensures each request gets its own session with automatic cleanup, preventing shared state bugs",
+            "It encrypts the database connection for security",
+            "It allows the database to be queried asynchronously"
+          ],
+          "correct_answer": 1,
+          "explanation": "Dependency injection via Depends ensures each request gets a fresh database session that is automatically closed after the request completes, preventing issues with shared mutable state across concurrent requests."
+        },
+        {
+          "question_id": "q4-validation",
+          "question": "If the client sends {\"category_id\": \"not_a_number\"} to a POST endpoint expecting CollectionCreate (which has category_id: int), what happens?",
+          "type": "multiple_choice",
+          "options": [
+            "Python raises a TypeError inside the function",
+            "FastAPI returns a 422 Unprocessable Entity error before the function runs",
+            "FastAPI silently converts 'not_a_number' to 0",
+            "The request succeeds with category_id set to None"
+          ],
+          "correct_answer": 1,
+          "explanation": "Pydantic validation runs before the endpoint function is called. Since category_id is typed as int in CollectionCreate, the string 'not_a_number' fails validation and FastAPI returns a 422 error with details about which field failed."
+        },
+        {
+          "question_id": "q5-async-generator",
+          "question": "Why does stream_generate use async def with yield instead of a regular def?",
+          "type": "multiple_choice",
+          "options": [
+            "Because all FastAPI functions must be async",
+            "To allow the server to handle other requests while waiting for LLM tokens, and to deliver tokens incrementally as they arrive",
+            "Because yield only works inside async functions",
+            "To make the function run on a separate thread"
+          ],
+          "correct_answer": 1,
+          "explanation": "The async def with yield creates an async generator that suspends while waiting for each LLM token (freeing the event loop for other requests) and yields each token as it arrives, enabling real-time streaming to the client."
+        }
+      ]
+    },
+    {
+      "type": "resources",
+      "title": "Further Reading",
+      "links": [
+        {
+          "title": "FastAPI Official Tutorial",
+          "url": "https://fastapi.tiangolo.com/tutorial/",
+          "description": "Step-by-step tutorial covering all core concepts with interactive examples"
+        },
+        {
+          "title": "FastAPI Path Parameters",
+          "url": "https://fastapi.tiangolo.com/tutorial/path-params/",
+          "description": "Deep dive into path parameter types and validation"
+        },
+        {
+          "title": "FastAPI Query Parameters",
+          "url": "https://fastapi.tiangolo.com/tutorial/query-params/",
+          "description": "Optional parameters, defaults, and type coercion"
+        },
+        {
+          "title": "FastAPI Request Body (Pydantic)",
+          "url": "https://fastapi.tiangolo.com/tutorial/body/",
+          "description": "How Pydantic models validate JSON request bodies"
+        },
+        {
+          "title": "FastAPI Dependencies",
+          "url": "https://fastapi.tiangolo.com/tutorial/dependencies/",
+          "description": "The dependency injection system explained with examples"
+        },
+        {
+          "title": "FastAPI Middleware",
+          "url": "https://fastapi.tiangolo.com/tutorial/middleware/",
+          "description": "How middleware (like CORS) wraps every request"
+        },
+        {
+          "title": "Pydantic V2 Documentation",
+          "url": "https://docs.pydantic.dev/latest/",
+          "description": "The data validation library that powers FastAPI's type system"
+        }
+      ]
+    }
+  ]
+}

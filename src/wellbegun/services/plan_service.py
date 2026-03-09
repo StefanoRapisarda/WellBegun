@@ -107,11 +107,6 @@ def create(
     db.commit()
     db.refresh(plan)
 
-    # Auto-create default collections
-    ensure_plan_collection(db, plan.id, "activities", "activity")
-    ensure_plan_collection(db, plan.id, "sources", "source")
-    ensure_plan_collection(db, plan.id, "actors", "actor")
-
     return plan
 
 

@@ -1,0 +1,316 @@
+{
+  "id": "course_008",
+  "slug": "event-driven-ui",
+  "title": "Event-Driven UI",
+  "technology": "Web/Svelte",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": ["client-server-architecture"],
+    "knowledge": []
+  },
+  "user_familiarity": "You're a data scientist with 10+ years of Python experience. You have heard of event-driven programming (perhaps from tkinter or matplotlib callbacks) but haven't studied it in the web UI context.",
+  "relevance_to_project": "WellBegun's entire frontend is event-driven: user clicks, form submissions, and keyboard interactions trigger handler functions that call API endpoints and update reactive stores. Understanding events explains the chain from user action to UI update.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Event-driven UI programming means your code mostly sits idle, waiting for user actions. When the user clicks, types, or submits a form, the browser generates an event and your registered handler function executes.\n\n**Python Analogy:** Like registering callbacks in tkinter (`button.config(command=my_function)`) or matplotlib widgets. The framework is idle until the user acts, then your callback runs.",
+      "metadata": {
+        "key_takeaways": [
+          "User actions (click, type, submit) produce events that the browser dispatches to your code",
+          "Event handlers are callback functions registered to run when a specific event occurs",
+          "Events propagate through the DOM tree (bubbling), allowing parent elements to catch child events",
+          "In component frameworks like Svelte, the pattern is 'props down, events up'"
+        ]
+      }
+    },
+    {
+      "id": "concept-events-handlers",
+      "title": "Events and Event Handlers",
+      "type": "concept",
+      "order": 2,
+      "content_md": "An event is a signal that something happened: click, submit, keypress. The browser creates an event object with details. An event handler is a function you attach to an element to run when that event occurs.\n\n**Python Comparison:** Exactly like tkinter's `button.config(command=my_function)` or matplotlib's `button.on_clicked(my_function)`. You register a callback, and the framework calls it when the event occurs.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<button onclick={() => console.log('clicked!')}>\n    Click me\n</button>",
+            "file_reference": null,
+            "annotation": "In Svelte 5, event handlers are passed as properties using on<event> naming. When the user clicks, the browser fires a click event, and Svelte calls the handler."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-common-events",
+      "title": "Common Event Types",
+      "type": "concept",
+      "order": 3,
+      "content_md": "Web browsers support dozens of event types. The most common in WellBegun: `click` (buttons, selection), `submit` (creating/updating entities), `input` (real-time filtering), `keydown` (keyboard shortcuts), `change` (dropdowns), `mouseenter`/`mouseleave` (tooltips, hover effects).\n\nEach event carries an event object with properties like `event.target` (the element that fired it) and methods like `event.preventDefault()` (stop the browser's default behavior).",
+      "metadata": {
+        "event_types": [
+          {"event": "click", "trigger": "User clicks an element", "use": "Buttons, links, selection"},
+          {"event": "submit", "trigger": "User submits a form", "use": "Creating/updating entities"},
+          {"event": "input", "trigger": "User types in a field", "use": "Real-time filtering, validation"},
+          {"event": "keydown", "trigger": "User presses a key", "use": "Keyboard shortcuts"},
+          {"event": "change", "trigger": "User changes a select/checkbox", "use": "Dropdown selections"}
+        ]
+      }
+    },
+    {
+      "id": "concept-event-propagation",
+      "title": "Event Propagation (Bubbling)",
+      "type": "concept",
+      "order": 4,
+      "content_md": "When an event fires on an element, it bubbles up through the DOM tree. Clicking a `<button>` inside a `<div>` inside a `<form>` fires the click event on the button first, then the div, then the form, up to the document root.\n\nThis lets you attach a single handler to a parent element to catch events from all its children. You can stop propagation with `event.stopPropagation()`.\n\n**Python Comparison:** Similar to exception handling where an exception propagates up the call stack until something catches it.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "text",
+            "code": "click event path:  button -> div -> form -> body -> document",
+            "file_reference": null,
+            "annotation": "Events bubble from the target element up through every ancestor to the document root."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-props-down-events-up",
+      "title": "Component Communication: Props Down, Events Up",
+      "type": "concept",
+      "order": 5,
+      "content_md": "In component-based frameworks like Svelte: parents pass data to children as props, children notify parents by calling event callbacks. The child doesn't know how deletion works -- it just notifies the parent.\n\n**Python Comparison:** Like the Strategy pattern in OOP -- the parent injects behavior (the delete function) into the child. The child calls the function without knowing its implementation.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<!-- Parent -->\n<NoteCard\n    note={myNote}\n    ondelete={() => handleDelete(myNote.id)}\n/>\n\n<!-- Child (NoteCard.svelte) -->\n<script>\n    let { note, ondelete } = $props();\n</script>\n<div>\n    <h3>{note.title}</h3>\n    <button onclick={ondelete}>Delete</button>\n</div>",
+            "file_reference": null,
+            "annotation": "Parent passes note data down (props) and a callback. Child calls the callback when delete is clicked (events up). The child doesn't know about APIs or stores."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-form-submission",
+      "title": "Form Submission Events",
+      "type": "concept",
+      "order": 6,
+      "content_md": "Forms are a special case. When submitted, the browser fires a `submit` event. The `e.preventDefault()` call is critical -- without it, the browser reloads the page (default form behavior from the 1990s). In a modern single-page app like WellBegun, you handle submission in JavaScript and update the UI reactively.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<form onsubmit={(e) => {\n    e.preventDefault();\n    createNote({ title, content });\n}}>\n    <input bind:value={title} />\n    <textarea bind:value={content}></textarea>\n    <button type=\"submit\">Create Note</button>\n</form>",
+            "file_reference": null,
+            "annotation": "preventDefault() stops the browser from reloading the page. The handler calls the API function instead, keeping the single-page app intact."
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 7,
+      "content_md": "WellBegun uses event-driven patterns throughout: entity creation forms (submit -> API POST -> store refresh), graph interactions (click on nodes -> select entity -> open detail panel), panel/tab navigation (click -> update store).\n\n**The full event chain for creating a note:**\n1. User types in form fields (input events update local state via `bind:value`)\n2. User clicks 'Create' (submit event fires)\n3. Handler calls `e.preventDefault()`\n4. Handler calls `createNote({ title, content })` (API POST request)\n5. Backend creates the note and returns it\n6. Handler calls `loadNotes()` to refresh the store\n7. `notes.set(newData)` notifies subscribers\n8. All components using `$notes` re-render\n\nThis chain connects three concepts: events (user action), client-server communication (API call), and reactivity (store update triggers re-render).",
+      "metadata": {
+        "key_files": [
+          "frontend/src/lib/api/notes.ts",
+          "frontend/src/lib/stores/notes.ts",
+          "frontend/src/lib/components/graph/KnowledgeGraph.svelte"
+        ]
+      }
+    },
+    {
+      "id": "example-create-note-chain",
+      "title": "The Full Event Chain — Creating a Note",
+      "type": "example",
+      "order": 8,
+      "content_md": "Trace the complete chain from user click to UI update:\n\n**Step 1:** User clicks submit. Browser fires `submit` event on the form.\n**Step 2:** Handler calls `e.preventDefault()` then `createNote({ title, content })`.\n**Step 3:** `createNote()` sends a POST request to the backend API.\n**Step 4:** After success, `loadNotes()` refreshes the store.\n**Step 5:** Every component using `$notes` re-renders with the new list.\n\nThe chain: **user click -> submit event -> preventDefault -> API POST -> store refresh -> reactive UI update**.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "User clicks submit button. Browser fires submit event on the form.",
+            "code": null,
+            "file": null
+          },
+          {
+            "step": 2,
+            "description": "Event handler runs: preventDefault() stops page reload, then calls API function",
+            "code": "e.preventDefault();\nawait createNote({ title, content });\nawait loadNotes();",
+            "file": null
+          },
+          {
+            "step": 3,
+            "description": "createNote() sends POST request to backend",
+            "code": "const res = await fetch(`${BASE}/`, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify(data),\n});",
+            "file": "frontend/src/lib/api/notes.ts"
+          },
+          {
+            "step": 4,
+            "description": "loadNotes() refreshes the store with fresh data",
+            "code": "notes.set(await getNotes());",
+            "file": "frontend/src/lib/stores/notes.ts"
+          },
+          {
+            "step": 5,
+            "description": "All components using $notes re-render with the updated list",
+            "code": null,
+            "file": null
+          }
+        ],
+        "key_insight": "The chain connects three concepts: events (user action), client-server communication (API call), and reactivity (store update triggers re-render)."
+      }
+    },
+    {
+      "id": "example-props-events",
+      "title": "Props Down, Events Up — Component Communication",
+      "type": "example",
+      "order": 9,
+      "content_md": "A parent component renders a list of notes. Each NoteCard has a delete button. The parent passes the note data down as a prop and a delete callback. The child calls the callback when delete is clicked. The child has no idea about API calls or store refreshes — it just calls the function the parent provided.\n\nData flows **down** (parent passes `note` prop). Events flow **up** (child calls `ondelete` callback). This separation of concerns keeps components simple and reusable.",
+      "metadata": {
+        "key_insight": "Props down, events up creates a clear, predictable data flow. Children are reusable because they don't depend on specific parent implementations."
+      }
+    },
+    {
+      "id": "exercises",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 10,
+      "content_md": "### Exercise 1: Trace the Event Flow\n\nA user clicks a 'Delete' button inside a NoteCard component. NoteCard is inside NoteList, which is inside App. Describe the event flow: which component handles the click? How does the parent know the note was deleted?\n\n### Exercise 2: Why preventDefault()?\n\nWhat would happen if you removed `e.preventDefault()` from a form's submit handler? Why is it necessary in a single-page app?\n\n### Exercise 3: Design an Event Chain\n\nDesign the event chain for editing an existing note. From 'Save' click through API call to UI re-render, list every step.",
+      "metadata": {
+        "exercises": [
+          {
+            "id": "trace-event-flow",
+            "title": "Trace the Event Flow",
+            "task": "A user clicks 'Delete' inside a NoteCard. NoteCard is inside NoteList, inside App. Describe the event flow.",
+            "hint": "The click fires on the button in NoteCard. NoteCard's handler calls the ondelete callback prop provided by the parent. The parent's callback calls the API and refreshes the store.",
+            "expected_answer": "Click event fires on button -> NoteCard calls ondelete callback -> Parent's handleDelete runs -> API deleteNote() called -> loadNotes() refreshes store -> all $notes subscribers re-render."
+          },
+          {
+            "id": "why-prevent-default",
+            "title": "Why preventDefault()?",
+            "task": "What happens without e.preventDefault() in a form submit handler?",
+            "hint": "The browser's default behavior is to submit the form via a full page navigation (GET or POST), which would reload the page and destroy all client-side state.",
+            "expected_answer": "Without preventDefault(), the browser reloads the page, destroying all client-side state (stores, component state). In a single-page app, form submission is handled in JavaScript instead."
+          },
+          {
+            "id": "design-event-chain",
+            "title": "Design an Event Chain",
+            "task": "Design the event chain for editing an existing note, from Save click to UI re-render.",
+            "hint": "Submit event -> preventDefault -> updateNote(id, data) API call -> loadNotes() store refresh -> reactive re-render.",
+            "expected_answer": "(1) Submit event, (2) preventDefault, (3) updateNote(id, {title, content}) sends PUT/PATCH, (4) Backend updates note, (5) loadNotes() refreshes store, (6) notes.set(newData) notifies subscribers, (7) All $notes components re-render."
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 11,
+      "content_md": "Test your understanding of event-driven UI programming concepts.",
+      "metadata": {
+        "questions": [
+          {
+            "id": "q1",
+            "question": "What is an event in web UI programming?",
+            "options": [
+              "A scheduled task that runs at a specific time",
+              "A signal that something happened (user click, key press, form submit) that triggers registered handler functions",
+              "A message sent from the server to the client",
+              "A CSS animation trigger"
+            ],
+            "correct_index": 1,
+            "explanation": "Events are the browser's way of telling your code that something happened. The browser creates an event object with details and dispatches it to registered handlers."
+          },
+          {
+            "id": "q2",
+            "question": "What does e.preventDefault() do in a form submit handler?",
+            "options": [
+              "Prevents the form from being displayed",
+              "Prevents other event handlers from running",
+              "Stops the browser's default behavior (page reload on form submit) so you can handle it in JavaScript",
+              "Prevents the event from bubbling up"
+            ],
+            "correct_index": 2,
+            "explanation": "By default, submitting a form causes a full page navigation. In a single-page app, you want to handle submission with JavaScript (API call + store update) instead."
+          },
+          {
+            "id": "q3",
+            "question": "What does 'props down, events up' mean?",
+            "options": [
+              "Data is stored in props, events are stored in the DOM",
+              "Parent components pass data to children via props, and children notify parents by calling event callbacks",
+              "Props flow from the server down, events flow from the client up",
+              "Events must always be defined before props"
+            ],
+            "correct_index": 1,
+            "explanation": "The parent passes data (like a note object) down as a prop. The child notifies the parent when something happens (like a delete click) by calling a callback function the parent provided."
+          },
+          {
+            "id": "q4",
+            "question": "What is event bubbling?",
+            "options": [
+              "Events fire multiple times on the same element",
+              "Events propagate from the target element up through its ancestor elements in the DOM tree",
+              "Events are delayed until the next render cycle",
+              "Events are converted to store updates automatically"
+            ],
+            "correct_index": 1,
+            "explanation": "When you click a button inside a div inside a form, the click event fires on the button first, then bubbles up to the div, then the form, and so on up to the document root."
+          },
+          {
+            "id": "q5",
+            "question": "In WellBegun, what is the complete event chain when a user creates a note via a form?",
+            "options": [
+              "Click -> page reload -> database update",
+              "Submit event -> preventDefault -> API POST request -> store refresh (loadNotes) -> reactive UI update",
+              "Click -> direct DOM update -> database sync",
+              "Submit event -> store update -> API call"
+            ],
+            "correct_index": 1,
+            "explanation": "The form submit fires, preventDefault stops the page reload, the API function sends a POST request, then loadNotes() refreshes the store, and all subscribed components re-render."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 12,
+      "content_md": "Curated resources for deepening your understanding of event-driven UI programming.",
+      "metadata": {
+        "links": [
+          {
+            "title": "MDN: Introduction to Events",
+            "url": "https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Events",
+            "type": "tutorial"
+          },
+          {
+            "title": "MDN: Event Bubbling",
+            "url": "https://developer.mozilla.org/en-US/docs/Learn/JavaScript/Building_blocks/Event_bubbling",
+            "type": "reference"
+          },
+          {
+            "title": "Svelte Tutorial: Events",
+            "url": "https://learn.svelte.dev/tutorial/dom-events",
+            "type": "tutorial"
+          },
+          {
+            "title": "Svelte 5 Event Handlers",
+            "url": "https://svelte.dev/docs/svelte/event-handlers",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

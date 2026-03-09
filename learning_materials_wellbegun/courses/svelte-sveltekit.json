@@ -1,0 +1,322 @@
+{
+  "id": "svelte-sveltekit",
+  "slug": "svelte-sveltekit",
+  "title": "Svelte & SvelteKit",
+  "technology": "Svelte/SvelteKit",
+  "category": "framework",
+  "difficulty": "beginner",
+  "estimated_minutes": 30,
+  "prerequisites": {
+    "courses": ["typescript-essentials"],
+    "knowledge": ["Basic HTML and CSS", "How web browsers render pages"]
+  },
+  "user_familiarity": "You have 10+ years of Python experience. You are comfortable with classes, decorators, and reactive patterns (e.g., property getters). You have completed the TypeScript Essentials course. You have not used Svelte or any frontend component framework before.",
+  "relevance_to_project": "Svelte is the frontend framework for WellBegun. Every UI component, from the knowledge graph to the entity panels, is a .svelte file. SvelteKit provides the project structure, routing, and build system. Understanding Svelte is essential for modifying any part of the WellBegun user interface.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "If Python compiles your `.py` source to bytecode for the interpreter, Svelte compiles your `.svelte` components to efficient JavaScript at build time. There is no virtual DOM and no runtime framework shipped to the browser -- just small, fast JavaScript. Think of `.svelte` files as templates that get compiled into code, much like Jinja2 templates but with built-in reactivity.\n\nSvelteKit is to Svelte what Django is to Python -- it adds routing, server-side rendering, and a project structure on top of the core component framework.",
+      "metadata": {
+        "key_takeaways": [
+          "Svelte is a compiler, not a runtime library -- components compile to efficient JavaScript",
+          "Each .svelte file has three sections: <script> (logic), template (HTML), and optional <style> (CSS)",
+          "Reactivity is built into the language -- variables update the DOM automatically",
+          "SvelteKit adds file-based routing, SSR, and project structure on top of Svelte"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### 1. Component Structure\n\nEvery `.svelte` file is a self-contained component with up to three sections: `<script>` for logic, a template section for HTML markup, and an optional `<style>` block for component-scoped CSS. In Python terms, imagine if a single file held your class definition, its HTML template, and its stylesheet all together.\n\n### 2. Reactivity (Svelte 5 Runes)\n\nWellBegun uses Svelte 5, which introduces \"runes\" -- special compiler directives that start with `$`. `$state()` creates reactive variables, `$derived` creates computed values (like Python's `@property`), `$effect()` runs side effects when dependencies change (like a watcher), and `$props()` declares component inputs.\n\n### 3. Template Syntax\n\nSvelte's template syntax uses `{#each items as item}` for loops (like Jinja2's `{% for %}`), `{#if condition}` / `{:else if}` / `{:else}` for conditionals, `{@const}` for local declarations inside blocks, and `{expression}` for interpolation (like Python f-strings).\n\n### 4. Component Props and Events\n\nComponents receive data via props (passed as attributes) and communicate back via callback props. DOM events use lowercase attributes like `onclick`, `onpointerdown`, etc. `bind:this` captures a reference to a DOM element.\n\n### 5. SvelteKit File-Based Routing\n\nSvelteKit uses the filesystem to define routes. Each `+page.svelte` in `src/routes/` becomes a URL path. `+layout.svelte` wraps all pages with shared UI like navigation bars and global state loading.\n\n### 6. The Store & API Pattern\n\nWellBegun uses a three-layer data flow: stores (writable/derived reactive containers) hold shared state, API functions (pure async fetch calls) handle HTTP communication, and components read from stores and trigger API actions. The `$` prefix auto-subscribes to stores in templates.",
+      "metadata": {
+        "key_takeaways": [
+          "A .svelte file has three sections: <script>, template, and <style> -- all scoped to one component",
+          "Svelte 5 runes: $state() for reactive variables, $derived for computed values, $effect() for watchers, $props() for inputs",
+          "Template syntax: {#each} for loops, {#if}/{:else} for conditionals, {@const} for local variables, {expression} for interpolation",
+          "Props flow data down (parent to child), callback props flow events up (child to parent)",
+          "SvelteKit file-based routing: +page.svelte = page, +layout.svelte = shared wrapper",
+          "Store pattern: writable stores hold data, API functions fetch from backend, components subscribe with $ prefix"
+        ],
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<script lang=\"ts\">\n\timport { onMount, untrack } from 'svelte';\n\timport type { KnowledgeTriple, BoardNode } from '$lib/types';\n\timport { boardNodes, triples, loadBoard, loadTriples, hiddenGraphEntities, graphFilterPanelOpen } from '$lib/stores/knowledgeGraph';\n\timport { focusSelection, isFocusActive } from '$lib/stores/focus';\n\timport { projects } from '$lib/stores/projects';\n\timport { logs } from '$lib/stores/logs';\n\timport { notes } from '$lib/stores/notes';\n\timport { activities } from '$lib/stores/activities';\n\timport { sources } from '$lib/stores/sources';\n\timport { actors } from '$lib/stores/actors';\n\timport { plans } from '$lib/stores/plans';\n\timport { collections } from '$lib/stores/collections';",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:1-13",
+            "annotation": "Component structure: the <script lang=\"ts\"> block opens the component. Imports pull in stores, types, and utilities from the lib/ directory using the $lib alias."
+          },
+          {
+            "language": "typescript",
+            "code": "let panX = $state(0);\nlet panY = $state(0);\nlet zoom = $state(1);\nlet canvasEl: HTMLDivElement | undefined = $state();\nlet viewportEl: HTMLDivElement | undefined = $state();",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:88-92",
+            "annotation": "Svelte 5 $state() rune: creates reactive variables. When zoom changes, every template expression referencing zoom re-renders automatically."
+          },
+          {
+            "language": "typescript",
+            "code": "let selectionCount = $derived(selectedCards.size);\nlet selectedEntities = $derived.by(() =>\n\t[...selectedCards].map(key => {\n\t\tconst [type, idStr] = key.split(':');\n\t\treturn { type, id: Number(idStr) };\n\t})\n);",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:114-120",
+            "annotation": "$derived computes a value from reactive state. $derived.by() is for complex expressions needing a function body. Like Python's @property, the value stays in sync automatically."
+          },
+          {
+            "language": "typescript",
+            "code": "$effect(() => {\n\tconst _nodes = $boardNodes;\n\tconst _version = $entityTagsVersion;\n\t(async () => {\n\t\ttry {\n\t\t\tnodeEntityTags = await getAllEntityTagsBulk();\n\t\t} catch {\n\t\t\tnodeEntityTags = {};\n\t\t}\n\t})();\n});",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:137-148",
+            "annotation": "$effect() runs whenever its reactive dependencies change. Here it re-fetches entity tags when board nodes or tag version update. Like a watcher pattern."
+          },
+          {
+            "language": "svelte",
+            "code": "{#each standaloneNodes as node (`${node.entity_type}:${node.entity_id}`)}\n\t{@const nodeData = getEntityData(node.entity_type, node.entity_id)}\n\t<div oncontextmenu={(e) => handleCardContextMenu(node.entity_type, node.entity_id, e)}>\n\t\t<GraphCard\n\t\t\tentityType={node.entity_type}\n\t\t\tentityId={node.entity_id}\n\t\t\ttitle={getEntityTitle(node.entity_type, node.entity_id)}\n\t\t\tx={node.x}\n\t\t\ty={node.y}\n\t\t\tcolor={ENTITY_COLORS[node.entity_type] ?? '#888'}\n\t\t/>\n\t</div>\n{/each}",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:1792-1821",
+            "annotation": "Template syntax: {#each} loops with a keyed expression for efficient updates. {@const} declares a local variable. Props are passed to the GraphCard child component. Event handlers use oncontextmenu."
+          },
+          {
+            "language": "svelte",
+            "code": "{#if $activeTab === 'dashboard'}\n\t<DashboardHome />\n{:else if $activeTab === 'input'}\n\t{@render children()}\n{:else if $activeTab === 'notepad'}\n\t<NotepadTab />\n{:else if $activeTab === 'graph'}\n\t<KnowledgeGraph />\n{:else if $activeTab === 'workspace'}\n\t<WorkspaceTab />\n{/if}",
+            "file_reference": "frontend/src/routes/+layout.svelte:513-533",
+            "annotation": "Conditional rendering: {#if}/{:else if} selects which component to show based on the active tab store value. $activeTab auto-subscribes to the store."
+          },
+          {
+            "language": "svelte",
+            "code": "<div\n\tclass=\"viewport\"\n\tbind:this={viewportEl}\n\tonpointerdown={handleCanvasPointerDown}\n\tonpointermove={handlePointerMove}\n\tonpointerup={handlePointerUp}\n\tonwheel={handleWheel}\n>",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:1741-1748",
+            "annotation": "DOM event handlers: Svelte 5 uses lowercase on* attributes. bind:this captures a DOM element reference. Multiple pointer events enable pan, drag, and zoom interactions."
+          },
+          {
+            "language": "svelte",
+            "code": "<GraphToolbar\n\t{zoom}\n\tfilterOpen={filterPanelOpen}\n\teditorOpen={graphEditorOpen}\n\tonAddEntity={handleAddEntity}\n\tonZoomIn={zoomIn}\n\tonZoomOut={zoomOut}\n\tonZoomFit={zoomFit}\n\tonToggleFilter={toggleFilterPanel}\n\tonToggleEditor={() => graphEditorOpen = !graphEditorOpen}\n\tonSwitchToCards={() => activeTab.set('input')}\n\tonScreenshot={handleScreenshot}\n\tselectActive={selectMode}\n\tonToggleSelect={() => (selectMode = !selectMode)}\n/>",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:1719-1733",
+            "annotation": "Component props and events: {zoom} is shorthand for zoom={zoom}. Callback props like onZoomIn pass functions that the child component calls. Inline arrow functions handle simple state toggles."
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun's frontend is a SvelteKit application in the `frontend/` directory. The architecture follows a clear separation: components in `lib/components/`, shared state in `lib/stores/` (30 files), API clients in `lib/api/` (15 files), and TypeScript interfaces in `lib/types.ts` (270 lines).\n\nThe data flow for every entity type follows the same pattern:\n1. `lib/types.ts` defines the TypeScript interface\n2. `lib/api/*.ts` provides fetch-based API functions\n3. `lib/stores/*.ts` wraps a writable store and exposes load functions\n4. Components import the store and call load functions on mount or in response to user actions\n\nThe app uses a single-page architecture with tab-based navigation. The `+layout.svelte` file handles all global setup: loading stores on mount, rendering the tab bar, and conditionally showing the active tab's component.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "import { writable } from 'svelte/store';\nimport type { Collection } from '$lib/types';\nimport { getCollections } from '$lib/api/collections';\n\nexport const collections = writable<Collection[]>([]);\n\nexport async function loadCollections(categoryId?: number) {\n\ttry {\n\t\tcollections.set(await getCollections(categoryId));\n\t} catch (e) {\n\t\tconsole.warn('Failed to load collections:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/collections.ts:1-13",
+            "annotation": "The store pattern: writable<Collection[]>([]) creates a reactive container. loadCollections() calls the API function and updates the store. Any component reading $collections will re-render."
+          },
+          {
+            "language": "typescript",
+            "code": "import { writable, derived } from 'svelte/store';\nimport type { Workspace, WorkspaceDetail } from '$lib/types';\nimport { getWorkspaces, getWorkspace, openWorkspace } from '$lib/api/workspaces';\n\nexport const workspaces = writable<Workspace[]>([]);\nexport const activeWorkspace = writable<WorkspaceDetail | null>(null);\nexport const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:1-7",
+            "annotation": "More complex store: derived() creates a read-only store computed from another. activeWorkspaceId always reflects the current workspace's ID without manual synchronization."
+          },
+          {
+            "language": "typescript",
+            "code": "const BASE = '/api/collections';\n\nexport async function getCollections(categoryId?: number): Promise<Collection[]> {\n\tconst url = categoryId != null ? `${BASE}/?category_id=${categoryId}` : `${BASE}/`;\n\tconst res = await fetch(url);\n\treturn res.json();\n}\n\nexport async function createCollection(data: { title: string; category_id: number; description?: string }): Promise<Collection> {\n\tconst res = await fetch(`${BASE}/`, {\n\t\tmethod: 'POST',\n\t\theaders: { 'Content-Type': 'application/json' },\n\t\tbody: JSON.stringify(data)\n\t});\n\treturn res.json();\n}",
+            "file_reference": "frontend/src/lib/api/collections.ts:3-23",
+            "annotation": "The API layer: pure async functions using fetch(). GET for reading, POST with JSON body for creating. Each function returns a typed Promise matching the interfaces in types.ts."
+          },
+          {
+            "language": "typescript",
+            "code": "export interface Collection {\n\tid: number;\n\tentity_type: string;\n\ttitle: string;\n\tdescription: string | null;\n\tcategory_id: number;\n\tis_active: boolean;\n\tis_archived: boolean;\n\tcreated_at: string;\n\tupdated_at: string;\n\titems: CollectionItem[];\n}",
+            "file_reference": "frontend/src/lib/types.ts:213-224",
+            "annotation": "The type layer: TypeScript interfaces define the shape of data flowing through the app. Every API response and store value is typed, catching errors at compile time."
+          },
+          {
+            "language": "typescript",
+            "code": "onMount(async () => {\n\tif (freshSession) {\n\t\tclearAllLastUsedTags();\n\t\tawait Promise.allSettled([\n\t\t\tdeactivateAllProjects(),\n\t\t\tdeactivateAllActivities()\n\t\t]);\n\t}\n\n\tPromise.allSettled([\n\t\tloadProjects(),\n\t\tloadLogs(),\n\t\tloadNotes(),\n\t\tloadSources(),\n\t\tloadActors(),\n\t\tloadActivities(),\n\t\tloadPlans(),\n\t\tloadCollections(),\n\t\tloadCategories(),\n\t\tloadTags(),\n\t\tloadWorkspaces()\n\t]);\n});",
+            "file_reference": "frontend/src/routes/+layout.svelte:281-302",
+            "annotation": "Global initialization: onMount in the layout loads all stores in parallel using Promise.allSettled. This runs once when the app first opens in the browser."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: Data Flow -- From Backend to UI\n\nTrace how collection data flows through the three layers:\n1. `types.ts` (line 213) defines the `Collection` interface\n2. `api/collections.ts` (line 5) provides `getCollections()` using `fetch()`\n3. `stores/collections.ts` (line 5) wraps a `writable` store, and `loadCollections()` calls the API and updates it\n4. `+layout.svelte` (line 298) calls `loadCollections()` inside `onMount`\n5. Any component using `$collections` in its template automatically displays the latest data\n\n### Example 2: KnowledgeGraph.svelte -- A Complex Component\n\nThis component integrates 8+ stores (lines 6-13), declares reactive canvas state with `$state()` (lines 88-92), computes visible nodes with `$derived` (lines 276-307), uses `$effect()` for tag synchronization (lines 137-148), and initializes data with `onMount` (line 1387). The template renders collections with `{#each}` loops and `{@const}` local variables (lines 1763-1821).",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "import { writable } from 'svelte/store';\nimport type { Collection } from '$lib/types';\nimport { getCollections } from '$lib/api/collections';\n\nexport const collections = writable<Collection[]>([]);\n\nexport async function loadCollections(categoryId?: number) {\n\ttry {\n\t\tcollections.set(await getCollections(categoryId));\n\t} catch (e) {\n\t\tconsole.warn('Failed to load collections:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/collections.ts:1-13",
+            "annotation": "Example 1 Step 3: The store imports the API function, calls it, and updates the reactive writable with the response. Any subscribing component re-renders automatically."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function getCollections(categoryId?: number): Promise<Collection[]> {\n\tconst url = categoryId != null ? `${BASE}/?category_id=${categoryId}` : `${BASE}/`;\n\tconst res = await fetch(url);\n\treturn res.json();\n}",
+            "file_reference": "frontend/src/lib/api/collections.ts:5-9",
+            "annotation": "Example 1 Step 2: A pure async function that calls the REST API. It builds the URL, makes the fetch, and returns the parsed JSON. No side effects -- the store layer handles state updates."
+          },
+          {
+            "language": "typescript",
+            "code": "import { projects } from '$lib/stores/projects';\nimport { logs } from '$lib/stores/logs';\nimport { notes } from '$lib/stores/notes';\nimport { activities } from '$lib/stores/activities';\nimport { sources } from '$lib/stores/sources';\nimport { actors } from '$lib/stores/actors';\nimport { plans } from '$lib/stores/plans';\nimport { collections } from '$lib/stores/collections';",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:6-13",
+            "annotation": "Example 2: KnowledgeGraph imports 8 entity stores. It reads all of them to resolve entity titles and data for graph cards, making it the most store-heavy component in the project."
+          },
+          {
+            "language": "typescript",
+            "code": "let visibleNodes = $derived(\n\t$boardNodes.filter(n => {\n\t\tif (!isEntityVisible(n.entity_type, n.entity_id)) return false;\n\t\tif (hiddenByCollapse.has(`${n.entity_type}:${n.entity_id}`)) return false;\n\t\tconst entityData = getEntityData(n.entity_type, n.entity_id);\n\t\tif (!entityData) return false;\n\t\tif (!$showArchived && entityData.is_archived) return false;\n\t\treturn true;\n\t})\n);",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:276-307",
+            "annotation": "Example 2: $derived computes the visible nodes by filtering board nodes through multiple criteria (visibility, collapse, archive, active-related, date, tag filters). This re-computes automatically whenever any dependency changes."
+          },
+          {
+            "language": "typescript",
+            "code": "onMount(() => {\n\tloadPredicates();\n\tpopulateAll().then(() => {\n\t\tPromise.allSettled([loadBoard(), loadTriples()]).then(async () => {\n\t\t\tboardLoadedInMount = true;\n\t\t\tconst payload = get(graphInitialSelection);",
+            "file_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:1387-1394",
+            "annotation": "Example 2: onMount initializes the graph by loading predicates, populating board nodes, then loading the board and triples. The chained .then() ensures proper sequencing."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Read a Store File\n\nOpen `frontend/src/lib/stores/workspaces.ts` (45 lines). Identify which stores are writable vs derived, what `activeWorkspaceId` computes, and how `setActiveWorkspace` coordinates multiple async operations.\n\n### Exercise 2: Trace an Event Handler\n\nIn `KnowledgeGraph.svelte`, the viewport div (line 1744) has `onpointerdown={handleCanvasPointerDown}`. Predict what happens when the user clicks/drags on the canvas background vs on a card, based on the state variables `isPanning` (line 101) and `draggingCard` (line 100).\n\n### Exercise 3: Modify Template Logic\n\nLook at the tab-switching logic in `+layout.svelte` (lines 513-533). If you wanted to add a new \"Analytics\" tab, what three things would you need to add?",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Open frontend/src/lib/stores/workspaces.ts (45 lines). Identify: (1) Which stores are writable and which are derived? (2) What is activeWorkspaceId derived from, and what does it compute? (3) How does setActiveWorkspace coordinate multiple async operations?",
+            "hints": [
+              "Lines 5-7 declare the stores. workspaces and activeWorkspace are writable (they hold data you set directly). activeWorkspaceId is derived.",
+              "activeWorkspaceId is derived from activeWorkspace -- it extracts just the .id property (or null).",
+              "setActiveWorkspace (lines 17-27) opens a workspace, fetches its detail, sets the store, and refreshes the list -- all in sequence with await."
+            ],
+            "solution_reference": "frontend/src/lib/stores/workspaces.ts:1-27"
+          },
+          {
+            "task": "In KnowledgeGraph.svelte, the viewport div (line 1744) has onpointerdown={handleCanvasPointerDown}. Without reading the handler implementation, predict: what should happen when the user clicks and drags on the empty canvas background? What about clicking and dragging on a card?",
+            "hints": [
+              "Canvas background clicks should start panning (moving the entire view).",
+              "Card clicks should start dragging that individual card.",
+              "The handler likely checks whether the click target is a card or the background to decide which behavior to activate.",
+              "Look at the state variables: isPanning (line 101) and draggingCard (line 100) suggest these two modes."
+            ],
+            "solution_reference": "frontend/src/lib/components/graph/KnowledgeGraph.svelte:88-102"
+          },
+          {
+            "task": "Look at the tab-switching logic in +layout.svelte (lines 513-533). If you wanted to add a new 'Analytics' tab, what three things would you need to add?",
+            "hints": [
+              "1. A new <button> in the tab bar (around line 330) with onclick={() => activeTab.set('analytics')}.",
+              "2. A new {:else if $activeTab === 'analytics'} block (around line 532) that renders your <AnalyticsTab /> component.",
+              "3. The actual AnalyticsTab.svelte component file in lib/components/."
+            ],
+            "solution_reference": "frontend/src/routes/+layout.svelte:330-533"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of Svelte and SvelteKit concepts as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What are the three sections of a .svelte file?",
+            "options": [
+              "imports, exports, template",
+              "script, template, style",
+              "head, body, footer",
+              "data, methods, render"
+            ],
+            "correct_index": 1,
+            "explanation": "A .svelte file has a <script> block for logic, a template section for HTML markup, and an optional <style> block for component-scoped CSS. See every .svelte file in the project, such as KnowledgeGraph.svelte where the script runs lines 1-1716, template 1718-1940+, and style at the end."
+          },
+          {
+            "question": "What does $state(0) do in Svelte 5?",
+            "options": [
+              "Creates a constant with value 0",
+              "Creates a reactive variable initialized to 0 that triggers UI updates when changed",
+              "Fetches state from the server",
+              "Declares a CSS variable"
+            ],
+            "correct_index": 1,
+            "explanation": "$state() is a Svelte 5 rune that creates a reactive variable. When the value changes, any template expression referencing it re-renders automatically. See KnowledgeGraph.svelte:88-90 where panX, panY, and zoom use this pattern."
+          },
+          {
+            "question": "In $collections, what does the $ prefix do?",
+            "options": [
+              "It marks the variable as private",
+              "It auto-subscribes to a Svelte store, providing the current value reactively",
+              "It converts the value to a string",
+              "It creates a new store"
+            ],
+            "correct_index": 1,
+            "explanation": "The $ prefix auto-subscribes to a Svelte store. $collections always holds the current value of the collections store, and the template re-renders when the store updates. See how $collections, $projects, etc. are used throughout KnowledgeGraph.svelte (lines 6-13 for imports, line 316 for usage)."
+          },
+          {
+            "question": "What is the role of onMount in a Svelte component?",
+            "options": [
+              "It runs before the component is created",
+              "It runs once after the component is first rendered in the browser",
+              "It runs on every state change",
+              "It defines the component's template"
+            ],
+            "correct_index": 1,
+            "explanation": "onMount is a lifecycle function that runs once after the component is first rendered in the browser. In WellBegun, +layout.svelte uses onMount (line 281) to load all application data from the backend. KnowledgeGraph.svelte uses it (line 1387) to load graph data."
+          },
+          {
+            "question": "How does WellBegun's store pattern relate to the API layer?",
+            "options": [
+              "Stores call the backend directly using SQL",
+              "Stores import API functions which use fetch() to call the backend, then update their reactive value with the response",
+              "The API layer bypasses stores and writes directly to the DOM",
+              "Stores and API functions are the same thing"
+            ],
+            "correct_index": 1,
+            "explanation": "Stores import API functions which use fetch() to call the backend, then update their reactive value with the response. For example, stores/collections.ts imports getCollections from api/collections.ts, calls it, and uses collections.set(...) to update the reactive store (lines 7-12)."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of Svelte and SvelteKit.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Svelte 5 Official Tutorial",
+            "url": "https://svelte.dev/tutorial/svelte/welcome-to-svelte",
+            "type": "tutorial"
+          },
+          {
+            "title": "Svelte 5 Runes Documentation",
+            "url": "https://svelte.dev/docs/svelte/$state",
+            "type": "official-docs"
+          },
+          {
+            "title": "SvelteKit Documentation",
+            "url": "https://svelte.dev/docs/kit/introduction",
+            "type": "official-docs"
+          },
+          {
+            "title": "Svelte Store Documentation",
+            "url": "https://svelte.dev/docs/svelte/stores",
+            "type": "official-docs"
+          },
+          {
+            "title": "SvelteKit Routing",
+            "url": "https://svelte.dev/docs/kit/routing",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

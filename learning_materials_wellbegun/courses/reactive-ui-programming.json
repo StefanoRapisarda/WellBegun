@@ -1,0 +1,301 @@
+{
+  "id": "course_007",
+  "slug": "reactive-ui-programming",
+  "title": "Reactive UI Programming",
+  "technology": "Svelte",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": ["event-driven-ui"],
+    "knowledge": []
+  },
+  "user_familiarity": "You're a data scientist with 10+ years of Python experience. You are a beginner with reactive UI programming — you've built WellBegun with AI assistance but haven't studied the underlying reactive paradigm.",
+  "relevance_to_project": "WellBegun's entire frontend is built on reactive principles. Svelte stores (writable<Note[]>, etc.) automatically update every subscribed component when data changes. Understanding reactivity explains why calling notes.set() in one place causes the sidebar, detail panel, and knowledge graph to all update simultaneously.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Reactive UI programming means declaring what the UI should look like given some state, and letting the framework handle updates when that state changes. Instead of manually finding DOM elements and changing their text or attributes (imperative), you write templates that reference reactive variables, and the framework re-renders automatically.\n\n**Python Analogy:** Imagine a matplotlib plot that automatically re-draws every time the underlying DataFrame changes — no need to call `plt.draw()` or clear the axes. That's what reactive UI gives you.",
+      "metadata": {
+        "key_takeaways": [
+          "Reactive UIs update automatically when the underlying data (state) changes",
+          "You declare what the UI should look like, not how to update it step by step",
+          "Data binding connects state to UI elements — changes in one are reflected in the other",
+          "Svelte uses reactive primitives ($state in Svelte 5, writable stores) to track changes and trigger re-renders"
+        ]
+      }
+    },
+    {
+      "id": "concept-imperative-vs-declarative",
+      "title": "Imperative vs. Declarative UI",
+      "type": "concept",
+      "order": 2,
+      "content_md": "In imperative DOM manipulation, you manually find and update elements: `document.getElementById('list').innerHTML = ''`, then loop and `appendChild`. In declarative/reactive code (Svelte), you describe the desired result: `{#each $notes as note}<li>{note.title}</li>{/each}`. Svelte handles the DOM updates.\n\n**Python Comparison:** Like pandas `df[df.score > 80]` (declarative) vs. manually looping and building a new list (imperative). You describe the result, not the steps.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "javascript",
+            "code": "// Imperative: manually manage every update\nconst list = document.getElementById('note-list');\nlist.innerHTML = '';\nfor (const note of notes) {\n    const li = document.createElement('li');\n    li.textContent = note.title;\n    list.appendChild(li);\n}",
+            "file_reference": null,
+            "annotation": "Traditional imperative DOM manipulation — you manage every element creation and update yourself."
+          },
+          {
+            "language": "svelte",
+            "code": "{#each $notes as note}\n    <li>{note.title}</li>\n{/each}",
+            "file_reference": null,
+            "annotation": "Reactive/declarative — Svelte handles DOM updates when $notes changes. You never touch the DOM directly."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-data-binding",
+      "title": "Data Binding",
+      "type": "concept",
+      "order": 3,
+      "content_md": "Data binding connects application state to the UI. One-way binding displays a value (store or variable) in the template — when it changes, the display updates. Two-way binding (Svelte's `bind:value`) also flows user input back to the variable.\n\n**Python Comparison:** Two-way binding is like tkinter's `StringVar` — link it to an Entry widget, and changes flow both ways.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<script>\n    let title = $state('');\n</script>\n\n<input bind:value={title} />\n<p>You typed: {title}</p>",
+            "file_reference": null,
+            "annotation": "Two-way binding on the input (typing updates title, setting title updates the input). One-way binding on the paragraph (displays the current value)."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-automatic-rerender",
+      "title": "Automatic Re-rendering on State Change",
+      "type": "concept",
+      "order": 4,
+      "content_md": "The core promise of reactive programming: when state changes, every piece of UI that depends on it re-renders automatically. No manual refresh or redraw calls.\n\nIn Svelte 5, `$state` marks a variable as reactive within a component. For shared state across components, `writable` stores serve the same purpose — any component reading `$notes` re-renders when `notes.set()` is called from anywhere.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<script>\n    let count = $state(0);\n</script>\n\n<button onclick={() => count++}>\n    Clicked {count} times\n</button>",
+            "file_reference": null,
+            "annotation": "When count changes, the button text updates automatically. No manual DOM manipulation needed."
+          },
+          {
+            "language": "typescript",
+            "code": "export const notes = writable<Note[]>([]);",
+            "file_reference": "frontend/src/lib/stores/notes.ts",
+            "annotation": "A writable store for shared state. Any component using $notes re-renders when notes.set() or notes.update() is called."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-reactive-primitives",
+      "title": "Reactive Primitives",
+      "type": "concept",
+      "order": 5,
+      "content_md": "Svelte provides two main mechanisms for reactivity:\n\n- **`$state` (Svelte 5 runes)** — for local component state. Lives inside a single component and is destroyed when that component unmounts.\n- **`writable` stores** — for shared state across components. Defined in a module file and persists as long as the application runs.\n\n**Python Comparison:** `$state` is like an instance variable on a class — local to that instance. A `writable` store is like a module-level variable that multiple objects can observe.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "svelte",
+            "code": "<script>\n    let searchTerm = $state('');\n    let isOpen = $state(false);\n</script>",
+            "file_reference": null,
+            "annotation": "$state creates reactive local state within a component."
+          },
+          {
+            "language": "typescript",
+            "code": "import { writable } from 'svelte/store';\nexport const notes = writable<Note[]>([]);",
+            "file_reference": "frontend/src/lib/stores/notes.ts",
+            "annotation": "A writable store is importable by any component. Multiple components can subscribe to the same store."
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 6,
+      "content_md": "WellBegun's frontend is built entirely on reactive principles. The `notes` store in `frontend/src/lib/stores/notes.ts` demonstrates the pattern:\n\n```typescript\nimport { writable } from 'svelte/store';\nimport type { Note } from '$lib/types';\nimport { getNotes } from '$lib/api/notes';\n\nexport const notes = writable<Note[]>([]);\n\nexport async function loadNotes() {\n    notes.set(await getNotes());\n}\n```\n\nThe `notes` store is the single source of truth for note data. When `loadNotes()` is called, it fetches notes from the backend API and calls `notes.set()`. Every component using `$notes` — sidebar list, detail panel, knowledge graph — re-renders with the new data instantly. No component needs to know about any other component.",
+      "metadata": {
+        "key_files": [
+          "frontend/src/lib/stores/notes.ts",
+          "frontend/src/lib/api/notes.ts",
+          "frontend/src/lib/stores/knowledgeGraph.ts"
+        ]
+      }
+    },
+    {
+      "id": "example-reactive-chain",
+      "title": "The Reactive Chain — From loadNotes() to UI Update",
+      "type": "example",
+      "order": 7,
+      "content_md": "Trace the reactivity chain when notes are loaded:\n\n**Step 1:** Something triggers `loadNotes()` (e.g., app starts or user navigates)\n**Step 2:** `loadNotes()` calls `getNotes()`, which makes a `fetch('/api/notes/')` request\n**Step 3:** `notes.set(data)` replaces the store value and notifies all subscribers\n**Step 4:** Every component using `$notes` re-renders — a list, a count badge, a graph node — all update simultaneously without knowing about each other\n\nThe chain: **data source (API) -> store update (set()) -> automatic UI re-render**. You only update the store; the framework propagates the change.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "Something triggers loadNotes()",
+            "code": "loadNotes();",
+            "file": null
+          },
+          {
+            "step": 2,
+            "description": "loadNotes() fetches data from the API",
+            "code": "notes.set(await getNotes());",
+            "file": "frontend/src/lib/stores/notes.ts"
+          },
+          {
+            "step": 3,
+            "description": "notes.set() replaces the store value and notifies all subscribers",
+            "code": null,
+            "file": null
+          },
+          {
+            "step": 4,
+            "description": "Every component using $notes re-renders with the new data",
+            "code": "{#each $notes as note}\n    <div>{note.title}</div>\n{/each}",
+            "file": null
+          }
+        ],
+        "key_insight": "The reactive chain is: data source (API) -> store update (set()) -> automatic UI re-render. You only update the store; the framework propagates the change to every subscriber."
+      }
+    },
+    {
+      "id": "example-imperative-vs-reactive",
+      "title": "Comparing Imperative vs. Reactive Approaches",
+      "type": "example",
+      "order": 8,
+      "content_md": "Display a filtered list of notes. Imperatively, you manually clear the container, loop through notes, filter, create elements, and append them — and must call this function every time notes or the filter changes. Reactively in Svelte, you write:\n\n```svelte\n<input bind:value={filter} />\n{#each $notes.filter(n => n.title.includes(filter)) as note}\n    <div>{note.title}</div>\n{/each}\n```\n\nThe list updates automatically when either `$notes` changes (new data from API) or `filter` changes (user types). You never call an update function.",
+      "metadata": {
+        "key_insight": "In reactive programming, you describe the desired UI state. The framework detects dependencies ($notes, filter) and re-renders when either changes."
+      }
+    },
+    {
+      "id": "exercises",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 9,
+      "content_md": "### Exercise 1: Predict the Reactive Update\n\nThe `notes` store holds `[{title: \"Meeting\"}, {title: \"Ideas\"}]`. A component displays `<p>You have {$notes.length} notes</p>`. Now `loadNotes()` is called and the API returns 3 notes. What happens?\n\n### Exercise 2: Trace the Reactivity Chain\n\nOpen `frontend/src/lib/stores/notes.ts`. Trace the full reactive chain from `loadNotes()` to component update. List each step.\n\n### Exercise 3: Imperative to Reactive\n\nRewrite this imperative code as reactive Svelte:\n```javascript\nconst el = document.getElementById('status');\nif (notes.length === 0) { el.textContent = 'No notes yet'; }\nelse { el.textContent = `${notes.length} notes`; }\n```",
+      "metadata": {
+        "exercises": [
+          {
+            "id": "predict-reactive-update",
+            "title": "Predict the Reactive Update",
+            "task": "The notes store holds [{title: 'Meeting'}, {title: 'Ideas'}]. A component displays '<p>You have {$notes.length} notes</p>'. loadNotes() is called and the API returns 3 notes. What happens?",
+            "hint": "notes.set() replaces the store value. Since $notes.length changes from 2 to 3, the paragraph re-renders to show 'You have 3 notes'.",
+            "expected_answer": "The paragraph automatically updates to show 'You have 3 notes'. No manual DOM update needed."
+          },
+          {
+            "id": "trace-reactivity-chain",
+            "title": "Trace the Reactivity Chain",
+            "task": "Open frontend/src/lib/stores/notes.ts. Trace the full reactive chain from loadNotes() to component update.",
+            "target_file": "frontend/src/lib/stores/notes.ts",
+            "hint": "The chain is: (1) loadNotes() called, (2) getNotes() fetches from API, (3) API returns JSON, (4) notes.set(data) notifies subscribers, (5) components using $notes re-render.",
+            "expected_answer": "loadNotes() -> getNotes() -> fetch('/api/notes/') -> JSON response -> notes.set(data) -> all $notes subscribers re-render."
+          },
+          {
+            "id": "imperative-to-reactive",
+            "title": "Imperative to Reactive",
+            "task": "Rewrite imperative DOM code as reactive Svelte using {#if} blocks and store subscriptions.",
+            "hint": "Use {#if $notes.length === 0}<p>No notes yet</p>{:else}<p>{$notes.length} notes</p>{/if}",
+            "expected_answer": "{#if $notes.length === 0}\n    <p>No notes yet</p>\n{:else}\n    <p>{$notes.length} notes</p>\n{/if}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 10,
+      "content_md": "Test your understanding of reactive UI programming concepts as used in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "id": "q1",
+            "question": "What is the main difference between imperative and reactive UI programming?",
+            "options": [
+              "Imperative is faster, reactive is slower",
+              "In imperative, you manually update the DOM step by step; in reactive, you declare the desired UI state and the framework handles updates",
+              "Reactive programming only works with stores",
+              "Imperative programming doesn't use JavaScript"
+            ],
+            "correct_index": 1,
+            "explanation": "Imperative code says 'find this element, change its text, add this child.' Reactive code says 'the UI should look like this given this data' and the framework handles the DOM diffing and patching."
+          },
+          {
+            "id": "q2",
+            "question": "In WellBegun's notes.ts, what triggers all subscribed components to re-render?",
+            "options": [
+              "Calling getNotes() from the API module",
+              "Calling notes.set() with new data",
+              "Importing the notes store in a component",
+              "Using the $ prefix in a template"
+            ],
+            "correct_index": 1,
+            "explanation": "The .set() method replaces the store value and notifies all subscribers. getNotes() only fetches data. Importing and using $ are about subscribing, not triggering updates."
+          },
+          {
+            "id": "q3",
+            "question": "What is data binding in the context of reactive UI?",
+            "options": [
+              "Linking a database table to a UI component",
+              "The mechanism that connects application state to UI elements so changes propagate automatically",
+              "A way to validate form inputs",
+              "A method for caching API responses"
+            ],
+            "correct_index": 1,
+            "explanation": "Data binding is the bridge between your data (stores, variables) and the UI. When the data changes, the UI updates. With two-way binding (Svelte's bind:value), user input also flows back to the data."
+          },
+          {
+            "id": "q4",
+            "question": "What is the difference between $state and a writable store in Svelte?",
+            "options": [
+              "$state is for numbers, writable is for arrays",
+              "$state is local to a component; writable stores are shared across components via module imports",
+              "writable stores are deprecated in Svelte 5",
+              "There is no difference"
+            ],
+            "correct_index": 1,
+            "explanation": "$state creates reactive state within a single component. A writable store is defined in a separate module file and can be imported by any component, enabling shared state across the application."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 11,
+      "content_md": "Curated resources for deepening your understanding of reactive UI programming.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Svelte Reactivity Documentation",
+            "url": "https://svelte.dev/docs/svelte/$state",
+            "type": "official-docs"
+          },
+          {
+            "title": "Svelte Tutorial: Reactivity",
+            "url": "https://learn.svelte.dev/tutorial/state",
+            "type": "tutorial"
+          },
+          {
+            "title": "Reactive Programming (Wikipedia)",
+            "url": "https://en.wikipedia.org/wiki/Reactive_programming",
+            "type": "reference"
+          },
+          {
+            "title": "Svelte Stores Documentation",
+            "url": "https://svelte.dev/docs/svelte/stores",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

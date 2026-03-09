@@ -1,0 +1,245 @@
+{
+  "id": "rest-apis",
+  "slug": "rest-apis",
+  "title": "REST APIs & HTTP Fundamentals",
+  "technology": "HTTP/REST",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": [],
+    "knowledge": []
+  },
+  "user_familiarity": "You've used Python's requests library to call APIs. You haven't built a REST server before.",
+  "relevance_to_project": "REST is the communication protocol between the WellBegun Svelte frontend and the FastAPI backend. Every button click, form submission, and data fetch goes through REST endpoints defined in src/wellbegun/routers/.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "REST (Representational State Transfer) is the architectural style your WellBegun app uses for the frontend (Svelte) to communicate with the backend (FastAPI). Think of it as a standardized contract: the frontend sends HTTP requests to specific URLs, and the backend responds with JSON data.\n\nIf you've used Python's `requests` library to call APIs, you've already used REST — you just may not have built the server side before.",
+      "metadata": {
+        "key_takeaways": [
+          "REST APIs use standard HTTP methods (GET, POST, PUT, DELETE) to perform CRUD operations",
+          "URLs identify resources (like /api/collections/5), not actions",
+          "The server is stateless — each request contains all the info needed to process it",
+          "JSON is the lingua franca for data exchange between frontend and backend"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### HTTP Methods Map to CRUD Operations\n\nIn Python, you might write functions like `get_collection()`, `create_collection()`, `delete_collection()`. REST maps these to HTTP methods:\n\n| HTTP Method | CRUD Operation | Example |\n|------------|----------------|--------|\n| GET | Read | Fetch all collections |\n| POST | Create | Create a new collection |\n| PUT | Update | Modify collection title |\n| DELETE | Delete | Remove a collection |\n\n### URLs as Resource Identifiers\n\nREST URLs describe *what* you're working with, not *what you're doing*. Instead of `/api/deleteCollection?id=5`, REST uses `DELETE /api/collections/5`.\n\nWellBegun's URL structure follows this convention:\n- `/api/collections/` — the collection list (GET = list all, POST = create)\n- `/api/collections/5` — a specific collection (GET = fetch, PUT = update, DELETE = remove)\n- `/api/collections/5/items` — items within collection 5 (POST = add item)\n- `/api/collections/5/activate` — lifecycle action on collection 5\n\n### Request and Response Bodies\n\nWhen creating or updating resources, data travels as JSON in the request body. When reading, the server returns JSON in the response body. The `Content-Type: application/json` header tells the server \"this request body is JSON\".\n\n### HTTP Status Codes\n\nStatus codes tell the client what happened:\n- **200** OK — Success (used for GET, PUT)\n- **201** Created — Resource created (used for POST)\n- **404** Not Found — Resource doesn't exist\n- **422** Unprocessable Entity — Validation error\n\nNotice FastAPI's `status_code=201` — it returns 201 for successful creation instead of the default 200.\n\n### Statelessness\n\nEach HTTP request is self-contained. The server doesn't remember previous requests. In WellBegun, every request includes all the context it needs — the collection ID is in the URL, the data is in the body, and the database session is freshly created via `Depends(get_db)`.",
+      "metadata": {
+        "key_takeaways": [
+          "HTTP methods (GET, POST, PUT, DELETE) map directly to CRUD operations (Read, Create, Update, Delete)",
+          "REST URLs identify resources, not actions — use DELETE /api/collections/5 instead of /api/deleteCollection?id=5",
+          "JSON request and response bodies carry data, with Content-Type headers signaling the format",
+          "HTTP status codes communicate outcomes: 200 OK, 201 Created, 404 Not Found, 422 Validation Error",
+          "Statelessness means each request is self-contained — no server-side session memory between requests"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun's REST API lives in `src/wellbegun/routers/` with one file per resource type. The main app at `src/wellbegun/main.py` wires them together.\n\nEach router handles a resource type. The `prefix=\"/api\"` means all routes start with `/api/`. Combined with the router's own prefix (`prefix=\"/collections\"`), the full URL becomes `/api/collections/`.\n\nThe frontend mirrors this structure in `frontend/src/lib/api/`, where each file contains functions that call the corresponding backend endpoints.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "@router.get(\"/\", response_model=list[CollectionOut])\ndef list_collections(category_id: int | None = None, db: Session = Depends(get_db)):\n    return collection_service.get_all(db, category_id=category_id)",
+            "file_reference": "src/wellbegun/routers/collections.py:18-20",
+            "annotation": "A GET endpoint that lists all collections. The router prefix /collections plus the app prefix /api makes the full URL /api/collections/."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function getCollections(categoryId?: number): Promise<Collection[]> {\n    const url = categoryId != null ? `${BASE}/?category_id=${categoryId}` : `${BASE}/`;\n    const res = await fetch(url);\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/collections.ts:5-9",
+            "annotation": "The frontend counterpart — calls GET /api/collections/ and parses the JSON response into a typed array."
+          },
+          {
+            "language": "python",
+            "code": "app.include_router(health.router, prefix=\"/api\")\napp.include_router(tags.router, prefix=\"/api\")\napp.include_router(projects.router, prefix=\"/api\")\napp.include_router(logs.router, prefix=\"/api\")\napp.include_router(notes.router, prefix=\"/api\")\napp.include_router(sources.router, prefix=\"/api\")\napp.include_router(actors.router, prefix=\"/api\")\napp.include_router(activities.router, prefix=\"/api\")\n\napp.include_router(plans.router, prefix=\"/api\")\napp.include_router(search.router, prefix=\"/api\")\napp.include_router(active_context.router, prefix=\"/api\")\napp.include_router(assistant.router, prefix=\"/api\")\napp.include_router(scaffolding.router, prefix=\"/api\")\napp.include_router(knowledge.router, prefix=\"/api\")\napp.include_router(web_proxy.router, prefix=\"/api\")\napp.include_router(journal.router, prefix=\"/api\")\napp.include_router(coffee.router, prefix=\"/api\")\napp.include_router(categories.router, prefix=\"/api\")\napp.include_router(collections.router, prefix=\"/api\")\napp.include_router(documents.router)\napp.include_router(workspaces.router, prefix=\"/api\")",
+            "file_reference": "src/wellbegun/main.py:444-465",
+            "annotation": "The main FastAPI app wires together all routers under the /api prefix. Each router adds its own resource prefix (e.g., /collections), forming URLs like /api/collections/."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: Full CRUD Lifecycle\n\nHere's the complete lifecycle of a collection in WellBegun, showing the REST pattern end-to-end: CREATE with POST, READ with GET, UPDATE with PUT, and DELETE with DELETE.\n\n### Example 2: Error Handling with Status Codes\n\nThe service layer raises `ValueError` for business logic errors (e.g., invalid status). The router catches it and converts it to a 422 HTTP response. The frontend checks `res.ok` and extracts the error detail from the JSON response body.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=CollectionOut, status_code=201)\ndef create_collection(data: CollectionCreate, db: Session = Depends(get_db)):\n    return collection_service.create(\n        db,\n        title=data.title,\n        category_id=data.category_id,\n        description=data.description,\n    )",
+            "file_reference": "src/wellbegun/routers/collections.py:31-38",
+            "annotation": "CREATE — POST /api/collections/ returns 201 on success with the new resource as JSON."
+          },
+          {
+            "language": "python",
+            "code": "@router.get(\"/{collection_id}\", response_model=CollectionOut)\ndef get_collection(collection_id: int, db: Session = Depends(get_db)):\n    collection = collection_service.get_by_id(db, collection_id)\n    if not collection:\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return collection",
+            "file_reference": "src/wellbegun/routers/collections.py:23-28",
+            "annotation": "READ — GET /api/collections/{id} returns the resource or 404 if not found."
+          },
+          {
+            "language": "python",
+            "code": "@router.put(\"/{collection_id}\", response_model=CollectionOut)\ndef update_collection(\n    collection_id: int, data: CollectionUpdate, db: Session = Depends(get_db)\n):\n    updates = data.model_dump(exclude_unset=True)\n    collection = collection_service.update(db, collection_id, **updates)\n    if not collection:\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return collection",
+            "file_reference": "src/wellbegun/routers/collections.py:41-49",
+            "annotation": "UPDATE — PUT /api/collections/{id} applies partial updates and returns the modified resource."
+          },
+          {
+            "language": "python",
+            "code": "@router.delete(\"/{collection_id}\")\ndef delete_collection(collection_id: int, db: Session = Depends(get_db)):\n    if not collection_service.delete(db, collection_id):\n        raise HTTPException(status_code=404, detail=\"Collection not found\")\n    return {\"ok\": True}",
+            "file_reference": "src/wellbegun/routers/collections.py:52-56",
+            "annotation": "DELETE — DELETE /api/collections/{id} removes the resource and returns a simple confirmation."
+          },
+          {
+            "language": "python",
+            "code": "@router.post(\"/{collection_id}/items\", response_model=CollectionItemOut, status_code=201)\ndef add_item(\n    collection_id: int, data: CollectionItemCreate, db: Session = Depends(get_db)\n):\n    try:\n        return collection_service.add_item(\n            db,\n            collection_id=collection_id,\n            member_entity_type=data.member_entity_type,\n            member_entity_id=data.member_entity_id,\n            position=data.position,\n            status=data.status,\n            notes=data.notes,\n            header=data.header,\n        )\n    except ValueError as e:\n        raise HTTPException(status_code=422, detail=str(e))",
+            "file_reference": "src/wellbegun/routers/collections.py:95-111",
+            "annotation": "Error handling — ValueError from the service layer is caught and converted to a 422 HTTP response with a descriptive detail message."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function addItem(collectionId: number, data: { member_entity_type: string; member_entity_id: number; position?: number; status?: string; notes?: string; header?: string }): Promise<CollectionItem> {\n    const res = await fetch(`${BASE}/${collectionId}/items`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(data)\n    });\n    if (!res.ok) {\n        const err = await res.json().catch(() => ({}));\n        throw new Error(err.detail || `Failed to add item (${res.status})`);\n    }\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/collections.ts:58-69",
+            "annotation": "Frontend error handling — checks res.ok, extracts the detail field from the error JSON, and throws a descriptive Error."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function createCollection(data: { title: string; category_id: number; description?: string }): Promise<Collection> {\n    const res = await fetch(`${BASE}/`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(data)\n    });\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/collections.ts:16-23",
+            "annotation": "Frontend CREATE — sends POST with JSON body and Content-Type header, then parses the response as the created Collection."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Trace a Request\n\nOpen `frontend/src/lib/api/collections.ts` and `src/wellbegun/routers/collections.py` side by side. For the `deleteCollection` function, trace the full request path: What URL does the frontend call? What HTTP method? What does the backend return?\n\n### Exercise 2: Spot the Pattern\n\nLook at the lifecycle endpoints in `src/wellbegun/routers/collections.py` (lines 61-90). These use `POST` instead of `PUT`. Why might `POST /collections/5/activate` be used instead of `PUT /collections/5` with `{is_active: true}` in the body?",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Open frontend/src/lib/api/collections.ts and src/wellbegun/routers/collections.py side by side. For the deleteCollection function, trace the full request path: What URL does the frontend call? What HTTP method? What does the backend return?",
+            "hints": [
+              "Look at lines 34-36 in the frontend file and lines 52-56 in the router file.",
+              "The frontend uses fetch with method: 'DELETE'.",
+              "The backend returns {\"ok\": True}."
+            ],
+            "solution_reference": "frontend/src/lib/api/collections.ts:34-36 and src/wellbegun/routers/collections.py:52-56"
+          },
+          {
+            "task": "Look at the lifecycle endpoints in src/wellbegun/routers/collections.py (lines 61-90). These use POST instead of PUT. Why might POST /collections/5/activate be used instead of PUT /collections/5 with {is_active: true} in the body?",
+            "hints": [
+              "Actions like 'activate' and 'archive' are state transitions with side effects.",
+              "Archiving also deactivates — requiring the client to know which fields to update together would be error-prone.",
+              "Using a dedicated POST endpoint makes the intent explicit and lets the server handle the logic."
+            ],
+            "solution_reference": "src/wellbegun/routers/collections.py:61-90"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of REST APIs and HTTP fundamentals as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "Which HTTP method should you use to create a new resource?",
+            "options": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE"
+            ],
+            "correct_index": 1,
+            "explanation": "POST is used to create new resources. In WellBegun, POST /api/collections/ creates a new collection (src/wellbegun/routers/collections.py:31)."
+          },
+          {
+            "question": "What does a 404 status code mean?",
+            "options": [
+              "The request was successful",
+              "The request body had invalid data",
+              "The requested resource was not found",
+              "The server encountered an internal error"
+            ],
+            "correct_index": 2,
+            "explanation": "404 means the requested resource was not found. In WellBegun, the routers raise HTTPException(status_code=404) when a collection or item doesn't exist in the database (src/wellbegun/routers/collections.py:27)."
+          },
+          {
+            "question": "Why does DELETE /api/collections/5 include the ID in the URL rather than in the request body?",
+            "options": [
+              "DELETE requests can't have a body",
+              "REST convention: the URL identifies the resource being acted upon",
+              "It's faster for the server to parse",
+              "The frontend doesn't support request bodies"
+            ],
+            "correct_index": 1,
+            "explanation": "In REST, the URL path identifies the resource. The HTTP method says what to do with it. This makes the API self-documenting: DELETE /api/collections/5 clearly means 'delete collection 5'."
+          },
+          {
+            "question": "In WellBegun, what header must be included when sending JSON data in a request body?",
+            "options": [
+              "Accept: text/html",
+              "Authorization: Bearer token",
+              "Content-Type: application/json",
+              "X-Request-ID: uuid"
+            ],
+            "correct_index": 2,
+            "explanation": "Content-Type: application/json tells the server the request body is JSON. You can see it in frontend/src/lib/api/collections.ts:19 where POST and PUT requests include headers: { 'Content-Type': 'application/json' }."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of REST APIs and HTTP.",
+      "metadata": {
+        "links": [
+          {
+            "title": "MDN HTTP Overview",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview",
+            "type": "official-docs"
+          },
+          {
+            "title": "REST API Tutorial",
+            "url": "https://restfulapi.net/",
+            "type": "tutorial"
+          },
+          {
+            "title": "FastAPI Tutorial: First Steps",
+            "url": "https://fastapi.tiangolo.com/tutorial/first-steps/",
+            "type": "tutorial"
+          },
+          {
+            "title": "HTTP Status Codes Reference",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

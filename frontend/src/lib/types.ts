@@ -57,6 +57,7 @@ export interface Activity {
 	position: number;
 	header: string | null;
 	status: string;
+	outcome: string | null;
 	activity_date: string | null;
 	is_active: boolean;
 	is_archived: boolean;

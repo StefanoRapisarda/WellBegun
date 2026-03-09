@@ -1,0 +1,249 @@
+{
+  "id": "rag",
+  "slug": "rag",
+  "title": "RAG (Retrieval-Augmented Generation)",
+  "technology": "RAG/LLM",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 15,
+  "prerequisites": {
+    "courses": ["rest-apis"],
+    "knowledge": []
+  },
+  "user_familiarity": "You're a data scientist with 10+ years of Python experience. You've built search engines and recommendation systems. You're new to RAG and LLM-augmented workflows.",
+  "relevance_to_project": "RAG powers WellBegun's Coffee Table assistant feature. The rag_service.py module classifies user intents, retrieves context from multiple sources (text search, tags, knowledge graph), builds structured prompts, and generates answers via a local Ollama LLM. It is the core intelligence layer of the application.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "If you've ever built a search engine or recommendation system, RAG follows the same pipeline: retrieve relevant data first, then use it to generate a response. Instead of training a model on your data (expensive, slow), you retrieve context at query time and give it to a pre-trained LLM as input.\n\nThink of it like an open-book exam. The LLM is the student. Instead of memorizing your entire database (fine-tuning), you hand it the relevant pages (retrieved context) right before it answers the question.",
+      "metadata": {
+        "key_takeaways": [
+          "RAG = Retrieve relevant context + Augment the prompt + Generate with an LLM",
+          "It avoids the need to fine-tune or retrain models on your data",
+          "WellBegun uses a multi-source retrieval strategy: text search, tag matching, and graph traversal",
+          "Intent classification routes queries to either direct SQL answers or LLM-powered responses"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### 1. The RAG Pipeline\n\nThe RAG pipeline in WellBegun follows three steps:\n\n1. **Classify the user's intent** — Is this a structured question (e.g., \"how many projects?\") that can be answered with SQL, or a general question that needs an LLM?\n2. **Retrieve relevant context** — Search the knowledge base using multiple strategies (text, tags, graph) to find entities related to the query.\n3. **Build the prompt and generate** — Format the retrieved context into a structured prompt and send it to a local LLM via Ollama.\n\nThis is the same retrieve-then-generate pattern you'd see in any search-based QA system, but instead of returning a ranked list of documents, you feed them to an LLM that synthesizes a natural language answer.\n\n### 2. Intent Classification\n\nBefore doing any retrieval, WellBegun classifies the user's query to decide whether it even needs an LLM. The function uses regex patterns to categorize queries into structured intents (count, list_active, status_filter, curation, tag_search, recent, list_all) versus general. Structured intents get answered with direct SQL — no LLM call needed. Only general queries flow through the full RAG pipeline.\n\nThe companion `_detect_entity_types()` function maps natural language terms like \"tasks\", \"entries\", \"people\" to canonical entity types (activity, log, actor) using a synonym dictionary.\n\n### 3. Structured Query Execution\n\nWhen the intent is structured (e.g., \"how many projects?\"), the system answers directly with SQL — no LLM needed. This is faster, cheaper, and deterministic. The function handles seven structured intents, each executing targeted SQLAlchemy queries. When the intent is general, it returns None, signaling the caller to proceed with the full RAG pipeline.\n\n### 4. Context Retrieval (The \"R\" in RAG)\n\nWhen a query falls through to general, the system retrieves context from multiple sources. The retrieval strategy has four layers:\n\n1. **Keyword text search** — Extracts meaningful keywords (stripping stop words and entity-type synonyms), then runs ILIKE searches.\n2. **Tag-based search** — Finds tags whose names appear in the query, then retrieves all tagged entities.\n3. **Graph neighbor traversal** — For the top 5 search hits, fetches knowledge graph triples to surface connected entities.\n4. **Active context** — Adds currently active entities so the LLM knows what the user is focused on.\n\nThe keyword extraction uses NLP-like techniques: stop word removal, entity synonym stripping, and singular form expansion for better recall.\n\n### 5. Prompt Building (The \"A\" in RAG)\n\nOnce context is retrieved, it is formatted into a prompt with clearly labeled sections (active entities, knowledge base entries, graph relationships) so the LLM can distinguish between different types of context. When no context is found, the prompt includes explicit fallback instructions.\n\n### 6. The LLM Service (The \"G\" in RAG)\n\nWellBegun uses Ollama for local LLM inference — no API keys, no cloud costs. The LLM service provides two generation modes: single-shot (waits for complete response) and streaming (yields tokens as they arrive for real-time display). Both communicate with Ollama via the REST API covered in the prerequisites course.\n\n### 7. Graph Neighbor Retrieval\n\nThe knowledge graph adds a dimension that keyword search alone misses. When the RAG service finds relevant entities, it looks up their relationships via `get_triples_for_entity()`, which returns all triples where the entity appears as either subject or object. This surfaces connected entities that keyword search alone would miss.",
+      "metadata": {
+        "key_takeaways": [
+          "Intent classification determines whether a query needs an LLM or can be answered with direct SQL",
+          "Structured intents (count, list_active, curation, etc.) bypass the LLM entirely for faster, deterministic answers",
+          "Multi-source retrieval combines keyword search, tag matching, graph traversal, and active context for richer results",
+          "Keyword extraction uses stop word removal, synonym stripping, and singularization for better recall",
+          "The prompt is formatted with labeled sections so the LLM can distinguish between types of context",
+          "Ollama provides local LLM inference with both single-shot and streaming generation modes",
+          "Graph neighbor traversal surfaces entity relationships that text search alone would miss"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "The RAG system powers WellBegun's \"Coffee Table\" assistant feature. The architecture follows this flow:\n\n```\nuser query → classify_intent() → structured intent → execute_structured_query() → direct SQL answer\n                                → general intent → retrieve_context() → build_rag_prompt() → llm_service.generate() → LLM response\n```\n\nKey files:\n- `src/wellbegun/services/rag_service.py` — Intent classification, structured query execution, context retrieval, and prompt building (730 lines)\n- `src/wellbegun/services/llm_service.py` — Ollama LLM wrapper for generation and streaming (103 lines)\n- `src/wellbegun/services/knowledge_service.py` — Knowledge graph triple retrieval used by the RAG context retrieval\n\nThe system also includes two supplementary features:\n- **Feedback-based few-shot examples** (`retrieve_feedback_examples`, lines 615-661) — retrieves past Q&A pairs scored by keyword overlap to provide few-shot examples in the prompt.\n- **Curation checks** (`check_curation`, lines 664-729) — heuristic quality checks (missing tags, short content, stale entities) that surface data hygiene suggestions alongside answers.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "def classify_intent(query: str) -> tuple[str, list[str]]:\n    \"\"\"Return (intent_name, entity_types) for the query.\"\"\"\n    lower = query.lower()\n    entity_types = _detect_entity_types(query)\n\n    # 1. count\n    if entity_types and re.search(r\"how many|count|number of\", lower):\n        return \"count\", entity_types\n\n    # 1b. status_filter\n    status_vals = _extract_status_values(query, entity_types or None)\n    if status_vals:\n        types = entity_types if entity_types else list(_STATUS_VALUES.keys())\n        return \"status_filter\", types\n\n    # 2. list_active\n    if entity_types and re.search(r\"active|current|ongoing\", lower):\n        return \"list_active\", entity_types\n\n    # ... more intents ...\n\n    # 8. general → fallthrough to LLM\n    return \"general\", entity_types",
+            "file_reference": "src/wellbegun/services/rag_service.py:104-157",
+            "annotation": "Intent classification uses regex patterns and entity type detection to route queries. Structured intents (count, status_filter, list_active, etc.) get answered with direct SQL. Only 'general' queries proceed to the full RAG pipeline."
+          },
+          {
+            "language": "python",
+            "code": "_ENTITY_SYNONYMS: dict[str, list[str]] = {\n    \"note\": [\"note\", \"notes\"],\n    \"log\": [\"log\", \"logs\", \"diary\", \"entry\", \"entries\"],\n    \"project\": [\"project\", \"projects\"],\n    \"activity\": [\"activity\", \"activities\", \"task\", \"tasks\"],\n    \"source\": [\"source\", \"sources\", \"reference\", \"references\"],\n    \"actor\": [\"actor\", \"actors\", \"person\", \"people\", \"contact\", \"contacts\"],\n    \"plan\": [\"plan\", \"plans\"],\n}",
+            "file_reference": "src/wellbegun/services/rag_service.py:26-34",
+            "annotation": "The synonym dictionary maps natural language terms to canonical entity types. This enables the system to understand that 'tasks' means 'activity' and 'people' means 'actor'."
+          },
+          {
+            "language": "python",
+            "code": "def execute_structured_query(db: Session, query: str) -> StructuredResult | None:\n    \"\"\"Try to answer the query with direct SQL. Returns None to fall through to LLM.\"\"\"\n    intent, entity_types = classify_intent(query)\n\n    if intent == \"general\":\n        return None\n\n    if intent == \"count\":\n        parts: list[str] = []\n        for etype in entity_types:\n            config = search_service.MODEL_CONFIG.get(etype)\n            if not config:\n                continue\n            model = config[\"model\"]\n            q = db.query(func.count(model.id))\n            if etype in search_service.ARCHIVABLE_TYPES:\n                q = q.filter(model.is_archived == False)\n            count = q.scalar()\n            label = etype.replace(\"_\", \" \")\n            parts.append(f\"- **{label}s**: {count}\")\n        text = \"Here are the counts:\\n\\n\" + \"\\n\".join(parts) if parts else \"No entity types matched your query.\"\n        return StructuredResult(answer_text=text)",
+            "file_reference": "src/wellbegun/services/rag_service.py:179-200",
+            "annotation": "Structured query execution for the 'count' intent. Builds a SQLAlchemy COUNT query per entity type and returns a formatted StructuredResult. Returns None for 'general' intents, signaling the caller to use the full RAG pipeline."
+          },
+          {
+            "language": "python",
+            "code": "async def generate(prompt: str, system: str = \"\", temperature: float | None = None) -> str:\n    \"\"\"Single-shot generation. Returns full response text.\"\"\"\n    payload: dict = {\n        \"model\": get_active_model(),\n        \"prompt\": prompt,\n        \"stream\": False,\n    }\n    if system:\n        payload[\"system\"] = system\n    if temperature is not None:\n        payload[\"options\"] = {\"temperature\": temperature}\n    try:\n        async with httpx.AsyncClient(timeout=120) as client:\n            r = await client.post(\n                f\"{settings.llm_base_url}/api/generate\",\n                json=payload,\n            )\n            r.raise_for_status()\n            return r.json()[\"response\"]\n    except httpx.HTTPError as exc:\n        raise OllamaUnavailableError(f\"Ollama request failed: {exc}\") from exc",
+            "file_reference": "src/wellbegun/services/llm_service.py:52-72",
+            "annotation": "Single-shot LLM generation via Ollama's REST API. Sends the augmented prompt and returns the complete response. Uses httpx for async HTTP, with a 120-second timeout for longer generations."
+          },
+          {
+            "language": "python",
+            "code": "async def stream_generate(prompt: str, system: str = \"\") -> AsyncIterator[str]:\n    \"\"\"Streaming generation. Yields tokens as they arrive.\"\"\"\n    payload: dict = {\n        \"model\": get_active_model(),\n        \"prompt\": prompt,\n        \"stream\": True,\n    }\n    if system:\n        payload[\"system\"] = system\n    try:\n        async with httpx.AsyncClient(timeout=300) as client:\n            async with client.stream(\n                \"POST\",\n                f\"{settings.llm_base_url}/api/generate\",\n                json=payload,\n            ) as response:\n                response.raise_for_status()\n                async for line in response.aiter_lines():\n                    if not line:\n                        continue\n                    chunk = json.loads(line)\n                    token = chunk.get(\"response\", \"\")\n                    if token:\n                        yield token\n                    if chunk.get(\"done\"):\n                        break\n    except httpx.HTTPError as exc:\n        raise OllamaUnavailableError(f\"Ollama stream failed: {exc}\") from exc",
+            "file_reference": "src/wellbegun/services/llm_service.py:75-102",
+            "annotation": "Streaming LLM generation — yields tokens as they arrive from Ollama, enabling real-time display in the UI. Uses httpx async streaming with a 300-second timeout."
+          },
+          {
+            "language": "python",
+            "code": "def get_triples_for_entity(\n    db: Session, entity_type: str, entity_id: int\n) -> list[KnowledgeTriple]:\n    return (\n        db.query(KnowledgeTriple)\n        .filter(\n            or_(\n                (KnowledgeTriple.subject_type == entity_type)\n                & (KnowledgeTriple.subject_id == entity_id),\n                (KnowledgeTriple.object_type == entity_type)\n                & (KnowledgeTriple.object_id == entity_id),\n            )\n        )\n        .order_by(KnowledgeTriple.created_at.desc())\n        .all()\n    )",
+            "file_reference": "src/wellbegun/services/knowledge_service.py:18-33",
+            "annotation": "Graph neighbor retrieval — finds all knowledge triples where the entity appears as either subject or object. Used by retrieve_context() to add relationship data to the RAG context."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: Structured Query — \"How many projects?\"\n\nTrace a structured query through the system:\n\n1. **Intent classification**: `classify_intent(\"how many projects?\")` detects entity type `project` and matches the regex `r\"how many|count|number of\"`. Returns `(\"count\", [\"project\"])`.\n2. **Structured execution**: `execute_structured_query()` sees the `count` intent, looks up the `Project` model, runs `db.query(func.count(Project.id))`, and returns `StructuredResult(answer_text=\"Here are the counts:\\n\\n- **projects**: 12\")`.\n3. **No LLM call needed** — the answer is returned directly. Fast, deterministic, zero compute.\n\n### Example 2: General Query — \"What do I know about machine learning?\"\n\nTrace a general query through the full RAG pipeline:\n\n1. **Intent classification**: `classify_intent(\"what do I know about machine learning?\")` doesn't match any structured patterns. Returns `(\"general\", [])`.\n2. **Structured execution**: Returns `None` — signaling the caller to use RAG.\n3. **Context retrieval**: `retrieve_context()` kicks in:\n   - `_extract_keywords()` strips stop words, producing `[\"machine\", \"learning\"]`\n   - **Text search**: Searches entity titles/descriptions for \"machine learning\" and individually for each keyword\n   - **Tag search**: Checks if any tag names contain \"machine learning\"\n   - **Graph traversal**: For the top 5 hits, fetches knowledge triples to find connected entities\n   - **Active context**: Adds currently active entities for awareness\n4. **Prompt building**: `build_rag_prompt()` formats everything into labeled sections (Active Entities, Knowledge Base Entries, Graph Relationships).\n5. **LLM generation**: `llm_service.generate(prompt)` sends the augmented prompt to Ollama, which synthesizes a natural language answer grounded in the retrieved context.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "def retrieve_context(db: Session, query: str) -> dict:\n    \"\"\"Combine search results + tag-based results + graph neighbors + active context.\"\"\"\n    keywords = _extract_keywords(query)\n    start_date, end_date = _extract_date_range(query)\n    detected_types = _detect_entity_types(query) or None\n    status_vals = _extract_status_values(query, detected_types) or None\n\n    search_results: list[dict] = []\n    seen_keys: set[tuple[str, int]] = set()\n\n    def _merge(results: list[dict]) -> None:\n        for r in results:\n            key = (r[\"type\"], r[\"id\"])\n            if key not in seen_keys:\n                search_results.append(r)\n                seen_keys.add(key)\n\n    # 1. Keyword-based text search\n    if keywords:\n        phrase = \" \".join(keywords)\n        _merge(search_service.search(\n            db, query=phrase, entity_types=detected_types,\n            start_date=start_date, end_date=end_date,\n            status_values=status_vals, limit=10,\n        ))\n\n    # 2. Tag-based search\n    tag_ids = _find_tag_ids_by_query(db, query)\n    if tag_ids:\n        _merge(search_service.search(\n            db, tag_ids=tag_ids, tag_mode=\"or\", entity_types=detected_types, limit=10\n        ))",
+            "file_reference": "src/wellbegun/services/rag_service.py:454-511",
+            "annotation": "The first two retrieval layers: keyword text search and tag-based search. Results are merged with deduplication via seen_keys. This is where the 'R' in RAG happens."
+          },
+          {
+            "language": "python",
+            "code": "    # Graph neighbors for top 5 search hits\n    graph_lines: list[str] = []\n    allowed_types = set(detected_types) if detected_types else None\n    for item in search_results[:5]:\n        triples = knowledge_service.get_triples_for_entity(\n            db, item[\"type\"], item[\"id\"]\n        )\n        for triple in triples[:3]:\n            line = (\n                f\"[{triple.subject_type}#{triple.subject_id}] \"\n                f\"—{triple.predicate}→ \"\n                f\"[{triple.object_type}#{triple.object_id}]\"\n            )\n            graph_lines.append(line)\n\n    # Active context\n    active = active_context_service.get_active_context(db)\n    active_lines: list[str] = []\n    for key, items in active.items():\n        entity_type = key.rstrip(\"s\")\n        for item in items:\n            title = getattr(item, \"title\", None) or getattr(item, \"full_name\", \"\")\n            active_lines.append(f\"[{entity_type}#{item.id}] {title} (ACTIVE)\")",
+            "file_reference": "src/wellbegun/services/rag_service.py:543-578",
+            "annotation": "The third and fourth retrieval layers: graph neighbor traversal and active context. Graph triples surface entity relationships (e.g., project references source). Active context ensures the LLM knows what the user is currently working on."
+          },
+          {
+            "language": "python",
+            "code": "def build_rag_prompt(query: str, context: dict) -> str:\n    \"\"\"Format retrieved context into an LLM prompt.\"\"\"\n    parts = [f\"User question: {query}\\n\"]\n\n    if context[\"active_context_text\"]:\n        parts.append(\"## Currently Active Entities\")\n        parts.append(context[\"active_context_text\"])\n        parts.append(\"\")\n\n    if context[\"entity_summaries\"]:\n        parts.append(\"## Relevant Knowledge Base Entries\")\n        parts.append(\"\\n\".join(context[\"entity_summaries\"]))\n        parts.append(\"\")\n\n    if context[\"graph_neighbors\"]:\n        parts.append(\"## Knowledge Graph Relationships\")\n        parts.append(\"\\n\".join(context[\"graph_neighbors\"]))\n        parts.append(\"\")\n\n    if not context[\"entity_summaries\"] and not context[\"active_context_text\"] and not context[\"graph_neighbors\"]:\n        parts.append(\"## No matching entities found in the knowledge base.\")\n        parts.append(\"If the user was asking about their data, let them know no matching entries were found.\")\n        parts.append(\"If the user was asking a general question, answer it using your own knowledge.\")\n        parts.append(\"\")\n\n    return \"\\n\".join(parts)",
+            "file_reference": "src/wellbegun/services/rag_service.py:587-612",
+            "annotation": "Prompt building — the 'A' in RAG. Formats retrieved context into labeled markdown sections. Includes fallback instructions when no context is found, telling the LLM to either report 'no results' or answer from its own knowledge."
+          },
+          {
+            "language": "python",
+            "code": "def _extract_keywords(query: str) -> list[str]:\n    \"\"\"Extract meaningful keywords from a natural language query.\"\"\"\n    cleaned = query.lower()\n    for pattern, _, _ in _DATE_PATTERNS:\n        cleaned = re.sub(pattern, \" \", cleaned)\n\n    words = re.findall(r\"[a-z0-9]+(?:'[a-z]+)?\", cleaned)\n    noise = _STOP_WORDS | _ENTITY_WORDS | _ALL_STATUS_TOKENS | {\n        \"status\", \"type\", \"kind\", \"category\", \"entity\", \"entities\", \"item\", \"items\",\n    }\n    raw = [w for w in words if w not in noise and len(w) > 1]\n\n    expanded: list[str] = []\n    seen: set[str] = set()\n    for kw in raw:\n        if kw not in seen:\n            expanded.append(kw)\n            seen.add(kw)\n        singular = _singularize(kw)\n        if singular and singular not in seen and singular not in _STOP_WORDS:\n            expanded.append(singular)\n            seen.add(singular)\n    return expanded",
+            "file_reference": "src/wellbegun/services/rag_service.py:408-438",
+            "annotation": "Keyword extraction with NLP-like techniques: stop word removal, entity synonym stripping, date expression removal, and singular form expansion. Produces both 'meetings' and 'meeting' for better ILIKE recall."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Add a New Structured Intent\n\nLook at `classify_intent()` in `src/wellbegun/services/rag_service.py:104-157`. Imagine you want to add a new intent called `\"oldest\"` that matches queries like \"what's my oldest project?\" or \"show me the oldest notes\". Where in the function would you add it? What regex pattern would you use? What would the corresponding handler in `execute_structured_query()` look like?\n\n### Exercise 2: Trace the Context Sources\n\nOpen `src/wellbegun/services/rag_service.py` and find the four data sources in `retrieve_context()` (lines 454-584). For each source, identify: (a) what function or service it calls, (b) what kind of information it adds, and (c) under what conditions it activates.",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Look at classify_intent() in src/wellbegun/services/rag_service.py:104-157. Imagine you want to add a new intent called 'oldest' that matches queries like 'what's my oldest project?' or 'show me the oldest notes'. Where in the function would you add it? What regex pattern would you use? What would the corresponding handler in execute_structured_query() look like?",
+            "hints": [
+              "You'd add it near the 'recent' intent (line 138) since they're both date-based.",
+              "The regex might be r\"oldest|first|earliest\".",
+              "The handler would query with .order_by(model.created_at.asc()).limit(5) instead of .desc()."
+            ],
+            "solution_reference": "src/wellbegun/services/rag_service.py:137-139 (pattern), src/wellbegun/services/rag_service.py:316-318 (handler model)"
+          },
+          {
+            "task": "Open src/wellbegun/services/rag_service.py and find the four data sources in retrieve_context() (lines 454-584). For each source, identify: (a) what function or service it calls, (b) what kind of information it adds, and (c) under what conditions it activates.",
+            "hints": [
+              "The four sources are: keyword text search, tag-based search, graph neighbor traversal, and active context.",
+              "Keyword search uses search_service.search() and activates when _extract_keywords() returns non-empty results.",
+              "Tag search uses _find_tag_ids_by_query() + search_service.search() and activates when tag names match the query.",
+              "Graph traversal uses knowledge_service.get_triples_for_entity() and always runs for the top 5 search hits.",
+              "Active context uses active_context_service.get_active_context() and always runs."
+            ],
+            "solution_reference": "src/wellbegun/services/rag_service.py:474-498 (keyword), 506-511 (tags), 543-568 (graph), 571-578 (active)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of RAG concepts as implemented in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "What is the main advantage of RAG over fine-tuning a model on your data?",
+            "options": [
+              "RAG produces more creative responses",
+              "RAG retrieves context at query time, avoiding expensive retraining when data changes",
+              "RAG doesn't need any data at all",
+              "RAG always produces deterministic answers"
+            ],
+            "correct_index": 1,
+            "explanation": "Fine-tuning requires retraining the model every time your data changes. RAG retrieves the latest data on every query, so your knowledge base is always up to date without any model retraining."
+          },
+          {
+            "question": "In WellBegun, when does the system skip the LLM entirely?",
+            "options": [
+              "When the query is too short",
+              "When Ollama is unavailable",
+              "When classify_intent() returns a structured intent like count or list_active",
+              "When there are no entities in the database"
+            ],
+            "correct_index": 2,
+            "explanation": "Structured intents are handled by execute_structured_query() which answers directly with SQL. This is faster and deterministic. See src/wellbegun/services/rag_service.py:179-340."
+          },
+          {
+            "question": "Why does retrieve_context() use multiple retrieval strategies instead of just keyword search?",
+            "options": [
+              "To make the code more complex",
+              "Because keyword search is unreliable",
+              "Each strategy captures different types of relevance — text similarity, categorical tags, structural relationships, and current focus",
+              "Because the database requires multiple queries"
+            ],
+            "correct_index": 2,
+            "explanation": "Keyword search finds textual matches, tag search finds categorical relationships, graph traversal finds structural connections (e.g., a project linked to a source), and active context adds awareness of the user's current focus. Together, they provide richer context than any single strategy alone."
+          },
+          {
+            "question": "What role does build_rag_prompt() play in the pipeline?",
+            "options": [
+              "It sends the query to the LLM",
+              "It formats retrieved context into labeled sections so the LLM can distinguish between different types of information",
+              "It classifies the user's intent",
+              "It stores the response in the database"
+            ],
+            "correct_index": 1,
+            "explanation": "The prompt is organized into sections like 'Currently Active Entities', 'Relevant Knowledge Base Entries', and 'Knowledge Graph Relationships'. This structure helps the LLM understand the provenance and type of each piece of context. See src/wellbegun/services/rag_service.py:587-612."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of RAG and LLM-augmented applications.",
+      "metadata": {
+        "links": [
+          {
+            "title": "What is Retrieval-Augmented Generation (RAG)?",
+            "url": "https://research.ibm.com/blog/retrieval-augmented-generation-RAG",
+            "type": "article"
+          },
+          {
+            "title": "LangChain RAG Tutorial",
+            "url": "https://python.langchain.com/docs/tutorials/rag/",
+            "type": "tutorial"
+          },
+          {
+            "title": "Ollama Documentation",
+            "url": "https://ollama.com/",
+            "type": "official-docs"
+          },
+          {
+            "title": "Building RAG Applications (Hugging Face)",
+            "url": "https://huggingface.co/learn/cookbook/en/rag_with_hugging_face_gemma_elasticsearch",
+            "type": "tutorial"
+          }
+        ]
+      }
+    }
+  ]
+}

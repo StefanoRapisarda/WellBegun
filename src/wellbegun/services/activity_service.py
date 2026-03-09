@@ -33,6 +33,7 @@ def create(
     position: int = 0,
     header: str | None = None,
     status: str = "todo",
+    outcome: str | None = None,
 ) -> Activity:
     activity = Activity(
         title=title,
@@ -44,6 +45,7 @@ def create(
         position=position,
         header=header,
         status=status,
+        outcome=outcome,
     )
     db.add(activity)
     db.flush()

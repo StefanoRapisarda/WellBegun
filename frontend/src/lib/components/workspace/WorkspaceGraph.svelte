@@ -27,6 +27,7 @@
 	import { categories } from '$lib/stores/categories';
 	import { attachTag, detachTag, getEntityTags } from '$lib/api/tags';
 	import { tags, loadTags, triggerEntityTagsRefresh } from '$lib/stores/tags';
+	import { workspaceInjectedResults } from '$lib/stores/workspaceQueryInjection';
 	import type { Tag } from '$lib/types';
 	import GraphCard from '$lib/components/graph/GraphCard.svelte';
 	import GraphConnections from '$lib/components/graph/GraphConnections.svelte';
@@ -34,7 +35,10 @@
 	import {
 		MINI_CARD_W, MINI_CARD_H, MINI_GAP, COLS,
 		TITLE_BAR_H, CONTAINER_PADDING,
-		containerWidth as ccWidth, containerHeight as ccHeight
+		containerWidth as ccWidth, containerHeight as ccHeight,
+		containerHeightNested as ccHeightNested,
+		buildVisualRows, NESTED_INDENT,
+		type ContainerMember
 	} from '$lib/components/graph/collectionLayout';
 	import QueryPanel from '$lib/components/shared/QueryPanel.svelte';
 	import GraphEditorPanel from '$lib/components/graph/GraphEditorPanel.svelte';
@@ -125,6 +129,10 @@
 	let hiddenConnectionsFor: { type: string; id: number } | null = $state(null);
 
 	let injectedResults = $derived.by(() => {
+		// Priority: external injection from dashboard topics > hidden connections
+		const ext = $workspaceInjectedResults;
+		if (ext) return ext.results;
+
 		if (!hiddenConnectionsFor) return undefined;
 		const nodeKey = `${hiddenConnectionsFor.type}:${hiddenConnectionsFor.id}`;
 		const seen = new Set<string>();
@@ -244,6 +252,9 @@
 	});
 
 	let injectedLabel = $derived.by(() => {
+		const ext = $workspaceInjectedResults;
+		if (ext) return ext.label;
+
 		const target = hiddenConnectionsFor;
 		if (!target) return undefined;
 		const count = hiddenConnectionCounts.get(`${target.type}:${target.id}`) ?? 0;
@@ -316,26 +327,48 @@
 	let visibleNodeKeys = $derived(new Set(visibleNodes.map(n => `${n.entity_type}:${n.entity_id}`)));
 
 	// --- Collection container derivations ---
+	// Nested collection expanded states (local UI state, collapsed by default)
+	let nestedExpandedMap = $state<Record<number, boolean>>({});
+
+	function handleNestedToggleCollapse(collectionId: number) {
+		nestedExpandedMap = { ...nestedExpandedMap, [collectionId]: !nestedExpandedMap[collectionId] };
+	}
+
+	// Build member data for a collection, attaching nested info for collection-type members
+	function buildMembers(collId: number): ContainerMember[] {
+		const coll = $collections.find(c => c.id === collId);
+		if (!coll) return [];
+		const members: ContainerMember[] = [];
+		for (const item of (coll.items || [])) {
+			const data = getEntityData(item.member_entity_type, item.member_entity_id);
+			if (!data) continue;
+			const member: ContainerMember = {
+				entityType: item.member_entity_type,
+				entityId: item.member_entity_id,
+				title: getEntityTitle(item.member_entity_type, item.member_entity_id),
+				status: item.status ?? data.status,
+				itemId: item.id,
+			};
+			if (item.member_entity_type === 'collection') {
+				const nestedColl = $collections.find(c => c.id === item.member_entity_id);
+				if (nestedColl) {
+					member.nestedMembers = buildMembers(nestedColl.id);
+					member.nestedExpanded = !!nestedExpandedMap[nestedColl.id];
+					member.nestedStatusCycle = getStatusCycle(nestedColl.id);
+				}
+			}
+			members.push(member);
+		}
+		return members;
+	}
+
 	// Map collection key → { collectionId, members[] } for collections with workspace members
 	let collectionContainers = $derived.by(() => {
-		const map = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
+		const map = new Map<string, { collectionId: number; members: ContainerMember[] }>();
 		for (const coll of $collections) {
 			const collKey = `collection:${coll.id}`;
 			if (!boardEntityKeySet.has(collKey)) continue;
-
-			const members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> = [];
-			for (const item of (coll.items || [])) {
-				const data = getEntityData(item.member_entity_type, item.member_entity_id);
-				if (data) {
-					members.push({
-						entityType: item.member_entity_type,
-						entityId: item.member_entity_id,
-						title: getEntityTitle(item.member_entity_type, item.member_entity_id),
-						status: item.status ?? data.status,
-						itemId: item.id,
-					});
-				}
-			}
+			const members = buildMembers(coll.id);
 			// Always add — even empty collections render as containers (title bar only)
 			map.set(collKey, { collectionId: coll.id, members });
 		}
@@ -354,6 +387,22 @@
 
 	async function handleStatusChange(itemId: number, newStatus: string) {
 		await updateItem(itemId, { status: newStatus });
+
+		// Sync the underlying entity's own status to stay consistent
+		for (const col of $collections) {
+			const ci = col.items.find(i => i.id === itemId);
+			if (ci) {
+				if (ci.member_entity_type === 'activity') {
+					await updateActivity(ci.member_entity_id, { status: newStatus });
+					await loadActivities();
+				} else if (ci.member_entity_type === 'source') {
+					await updateSource(ci.member_entity_id, { status: newStatus });
+					await loadSources();
+				}
+				break;
+			}
+		}
+
 		await loadCollections();
 	}
 
@@ -374,7 +423,7 @@
 	// Filtered containers for rendering — excludes dragged member from its container
 	let renderContainers = $derived.by(() => {
 		if (!draggingKey || groupDragOrigPositions) return collectionContainers;
-		const filtered = new Map<string, { collectionId: number; members: Array<{ entityType: string; entityId: number; title: string; status?: string; itemId?: number }> }>();
+		const filtered = new Map<string, { collectionId: number; members: ContainerMember[] }>();
 		for (const [k, entry] of collectionContainers) {
 			const filteredMembers = entry.members.filter(m => `${m.entityType}:${m.entityId}` !== draggingKey);
 			filtered.set(k, { ...entry, members: filteredMembers });
@@ -395,7 +444,10 @@
 
 	// Container nodes = visible nodes matching container collection keys
 	let containerNodes = $derived(
-		visibleNodes.filter(n => containerCollectionKeys.has(`${n.entity_type}:${n.entity_id}`))
+		visibleNodes.filter(n => {
+			const key = `${n.entity_type}:${n.entity_id}`;
+			return containerCollectionKeys.has(key) && !containedMemberKeys.has(key);
+		})
 	);
 
 	// Augmented nodeMap with container and member dimensions
@@ -411,32 +463,33 @@
 			const existing = map.get(collKey);
 			if (existing) {
 				existing.w = ccWidth();
-				existing.h = ccHeight(entry.members.length, existing.collapsed);
+				existing.h = ccHeightNested(entry.members, existing.collapsed);
 			}
 		}
 		// Set member entries with absolute positions inside their container
-		// Creates entries for members not already in nodeMap (e.g. not workspace items)
+		// Uses buildVisualRows so expanded nested collections push subsequent rows down
 		for (const [collKey, entry] of renderContainers) {
 			const container = map.get(collKey);
 			if (!container) continue;
-			entry.members.forEach((m, i) => {
+			const rows = buildVisualRows(entry.members);
+			rows.forEach((row, i) => {
+				const m = row.member;
 				const memberKey = `${m.entityType}:${m.entityId}`;
-				const col = i % COLS;
-				const row = Math.floor(i / COLS);
-				const mx = container.x + CONTAINER_PADDING + col * (MINI_CARD_W + MINI_GAP);
-				const my = container.y + TITLE_BAR_H + CONTAINER_PADDING + row * (MINI_CARD_H + MINI_GAP);
+				const mx = container.x + CONTAINER_PADDING + row.indent * NESTED_INDENT;
+				const my = container.y + TITLE_BAR_H + CONTAINER_PADDING + i * (MINI_CARD_H + MINI_GAP);
+				const mw = MINI_CARD_W - row.indent * NESTED_INDENT;
 				let memberNode = map.get(memberKey);
 				if (!memberNode) {
 					memberNode = {
 						id: -m.entityId, entity_type: m.entityType, entity_id: m.entityId,
-						x: mx, y: my, w: MINI_CARD_W, h: MINI_CARD_H,
+						x: mx, y: my, w: mw, h: MINI_CARD_H,
 						collapsed: false, created_at: '', updated_at: ''
 					};
 					map.set(memberKey, memberNode);
 				} else {
 					memberNode.x = mx;
 					memberNode.y = my;
-					memberNode.w = MINI_CARD_W;
+					memberNode.w = mw;
 					memberNode.h = MINI_CARD_H;
 				}
 			});
@@ -575,7 +628,9 @@
 		if (!node) return;
 		dragStarted = false;
 		draggingCard = { type, id, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y };
-		draggingKey = key;
+		// Don't set draggingKey yet — defer until drag threshold is crossed
+		// so the member stays visually inside the container on a simple click
+		draggingKey = null;
 		groupDragOrigPositions = null; // single-card drag, not group
 
 		document.addEventListener('pointermove', handleDragMove);
@@ -620,6 +675,10 @@
 			const dist = Math.hypot(e.clientX - draggingCard.startX, e.clientY - draggingCard.startY);
 			if (dist < DRAG_THRESHOLD) return;
 			dragStarted = true;
+			// Set draggingKey now so the member pops out of its container only on actual drag
+			if (!draggingKey) {
+				draggingKey = `${draggingCard.type}:${draggingCard.id}`;
+			}
 		}
 
 		const dx = (e.clientX - draggingCard.startX) / zoom;
@@ -830,7 +889,8 @@
 					for (const selKey of selectedCards) {
 						if (existingKeys.has(selKey)) continue;
 						const [sType, sIdStr] = selKey.split(':');
-						if (sType === 'collection') continue;
+						// Skip dropping a collection into itself
+						if (sType === 'collection' && Number(sIdStr) === dt.id) continue;
 						await addItem(dt.id, { member_entity_type: sType, member_entity_id: Number(sIdStr) });
 					}
 					await loadCollections();
@@ -871,25 +931,29 @@
 		} else if (dropTarget) {
 			if (dropTarget.type === 'collection') {
 				// Drop onto a collection container → move entity into collection
+				// Clear dragging state first so containedMemberKeys includes the
+				// newly-added member (the exclusion at line 367 checks draggingKey)
+				const dtId = dropTarget.id;
+				draggingCard = null;
+				draggingKey = null;
 				try {
 					// If already in a different collection, remove first
 					const dragKey = `${type}:${id}`;
 					const oldContainerKey = memberToContainerKey.get(dragKey);
 					if (oldContainerKey) {
 						const oldCollId = collectionContainers.get(oldContainerKey)?.collectionId;
-						if (oldCollId && oldCollId !== dropTarget.id) {
+						if (oldCollId && oldCollId !== dtId) {
 							const oldColl = $collections.find(c => c.id === oldCollId);
 							const oldItem = oldColl?.items?.find((i: any) => i.member_entity_type === type && i.member_entity_id === id);
 							if (oldItem) await removeItem(oldItem.id);
 						}
 					}
-					await addItem(dropTarget.id, { member_entity_type: type, member_entity_id: id });
+					await addItem(dtId, { member_entity_type: type, member_entity_id: id });
 					await loadCollections();
 					await loadTriples();
 				} catch (err) {
 					console.error('Failed to add to collection:', err);
 				}
-				scheduleSavePositions();
 			} else {
 				// Reset position and create connection (existing tag-attach behavior)
 				activeWorkspace.update(ws => {
@@ -1800,6 +1864,13 @@
 			requestAnimationFrame(() => zoomFit());
 		}
 	});
+
+	// Auto-open query panel when external injection arrives (e.g. from dashboard topics)
+	$effect(() => {
+		if ($workspaceInjectedResults) {
+			queryPanelOpen = true;
+		}
+	});
 </script>
 
 <div class="workspace-graph">
@@ -1854,6 +1925,7 @@
 							onMemberPointerDown={(type, id, e) => handleMemberPointerDown(type, id, e)}
 							onStatusChange={handleStatusChange}
 							onToggleCollapse={() => handleToggleCollapse(node.entity_type, node.entity_id)}
+							onNestedToggleCollapse={handleNestedToggleCollapse}
 							onContextMenu={(e) => handleCardContextMenu(node.entity_type, node.entity_id, e)}
 						/>
 						{#if (hiddenConnectionCounts.get(`${node.entity_type}:${node.entity_id}`) ?? 0) > 0}
@@ -1992,7 +2064,7 @@
 	<QueryPanel
 		bind:this={queryPanelRef}
 		open={queryPanelOpen}
-		onClose={() => { queryPanelOpen = false; hiddenConnectionsFor = null; }}
+		onClose={() => { queryPanelOpen = false; hiddenConnectionsFor = null; workspaceInjectedResults.set(null); }}
 		onResultClick={handleQueryResult}
 		onStateChange={handleQueryStateChange}
 		resultActionLabel="Add to workspace"
@@ -2002,7 +2074,7 @@
 		boardEntityKeys={boardEntityKeySet}
 		{injectedResults}
 		{injectedLabel}
-		onClearInjected={() => { hiddenConnectionsFor = null; }}
+		onClearInjected={() => { hiddenConnectionsFor = null; workspaceInjectedResults.set(null); }}
 	/>
 </div>
 

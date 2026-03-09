@@ -60,6 +60,7 @@
 			{ key: 'description', label: 'Description' },
 			{ key: 'duration', label: 'Duration (min)' },
 			{ key: 'status', label: 'Status' },
+			{ key: 'outcome', label: 'Outcome' },
 		],
 		source: [
 			{ key: 'description', label: 'Description' },

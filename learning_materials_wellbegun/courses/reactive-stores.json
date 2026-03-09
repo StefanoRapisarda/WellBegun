@@ -1,0 +1,413 @@
+{
+  "id": "course_006",
+  "slug": "reactive-stores",
+  "title": "Reactive Stores & State Management",
+  "technology": "Svelte",
+  "category": "pattern",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": ["svelte-sveltekit"],
+    "knowledge": []
+  },
+  "user_familiarity": "You're a data scientist with 10 years of Python experience. You have no prior experience with reactive stores or Svelte state management (none/heard level).",
+  "relevance_to_project": "WellBegun uses Svelte stores extensively with a consistent architecture: each entity type has a store file (writable store + load functions), an API file (fetch calls), and components that import from both. The KnowledgeGraph component alone imports stores from 8 different files.",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Svelte stores are reactive containers that notify listeners when their value changes — like Python's Observable pattern (e.g., tkinter's `StringVar`), but simpler. A store is a variable that automatically updates every component that uses it.\n\n**Python Bridge:** If you've used Python's Observable pattern — event listeners in GUI frameworks like tkinter's `StringVar`, or callbacks in matplotlib widgets — Svelte stores are the same idea: a value that notifies listeners when it changes. In data science, you pass DataFrames explicitly between functions. In a web UI, stores let multiple components share state automatically.",
+      "metadata": {
+        "key_takeaways": [
+          "Stores are reactive containers — change the value, and all subscribers update automatically",
+          "writable stores can be set from anywhere (like a global variable, but safer)",
+          "derived stores compute values from other stores (like a spreadsheet formula)",
+          "The $ prefix auto-subscribes in Svelte components (no manual subscribe/unsubscribe)"
+        ]
+      }
+    },
+    {
+      "id": "concept-writable-store",
+      "title": "writable() — The Basic Store",
+      "type": "concept",
+      "order": 2,
+      "content_md": "The simplest store is a `writable`: a container that holds a value and lets you replace it. It takes a generic type parameter (like Python's `list[Collection]` type hint) and an initial value.\n\n**Python Comparison:** Like a global variable wrapped in a class that calls `notify()` on every assignment. Conceptually: a `WritableStore` class with `set()` that triggers all registered callbacks.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export const collections = writable<Collection[]>([]);",
+            "file_reference": "frontend/src/lib/stores/collections.ts:5",
+            "annotation": "Creates a store holding an array of Collection objects, initialized to empty. The <Collection[]> generic is like Python's list[Collection] type hint."
+          },
+          {
+            "language": "typescript",
+            "code": "export const workspaces = writable<Workspace[]>([]);\nexport const activeWorkspace = writable<WorkspaceDetail | null>(null);",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:5-6",
+            "annotation": "Two writable stores for related data. The '| null' type is like Python's Optional[WorkspaceDetail] — the store can hold a workspace or null (no selection)."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-reading-writing",
+      "title": "Reading and Writing Stores",
+      "type": "concept",
+      "order": 3,
+      "content_md": "`.set(value)` replaces the store's value entirely. `.update(fn)` modifies based on current value. In Svelte components, the `$` prefix auto-subscribes to the store — `$collections` gives you the current value and re-renders automatically when it changes.\n\n**Python Comparison:** `.set()` is like simple assignment (`x = new_value`) but with automatic notification. `.update()` is like modifying a mutable container (`list.append`) but done immutably.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "collections.set(await getCollections(categoryId));",
+            "file_reference": "frontend/src/lib/stores/collections.ts:9",
+            "annotation": "Replaces the entire store value with the API response. Every component using $collections re-renders."
+          },
+          {
+            "language": "typescript",
+            "code": "activeWorkspace.set(detail);",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:21",
+            "annotation": "Sets the active workspace store to the fetched workspace detail object."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-derived-store",
+      "title": "derived() — Computed Stores",
+      "type": "concept",
+      "order": 4,
+      "content_md": "A `derived` store automatically computes its value from one or more source stores. It's read-only — you can't `.set()` it directly. When the source store changes, the derived store recomputes. The `?.` is optional chaining (like Python's `getattr` with a default), and `??` is nullish coalescing (like Python's `or` but only for `null`/`undefined`).\n\n**Python Comparison:** Like a `@property` decorator or a pandas computed column. But unlike Python properties that recompute on every access, derived stores recompute only when their source changes, then cache the result.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:7",
+            "annotation": "Automatically extracts the ID from activeWorkspace. When activeWorkspace changes, activeWorkspaceId recomputes. When activeWorkspace is null, activeWorkspaceId becomes null."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-store-api-pattern",
+      "title": "The Store + API Pattern",
+      "type": "concept",
+      "order": 5,
+      "content_md": "WellBegun pairs each store with async functions that fetch data from the API and update the store. The pattern is: component calls load function -> API fetch -> `store.set()` -> all subscribed components update. This separates data storage from data fetching while keeping them co-located in the same file.\n\n**Python Comparison:** Similar to a repository pattern in Python — a module that manages both the data cache and the code to refresh it from the data source.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export async function loadCollections(categoryId?: number) {\n\ttry {\n\t\tcollections.set(await getCollections(categoryId));\n\t} catch (e) {\n\t\tconsole.warn('Failed to load collections:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/collections.ts:7-13",
+            "annotation": "The load function fetches from the API and updates the store. The try/catch ensures a failed API call doesn't crash the app — it logs a warning and the store keeps its previous value."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function loadWorkspaces() {\n\ttry {\n\t\tworkspaces.set(await getWorkspaces());\n\t} catch (e) {\n\t\tconsole.warn('Failed to load workspaces:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:9-15",
+            "annotation": "Same pattern as loadCollections — fetch and set. This consistency makes the codebase predictable."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function setActiveWorkspace(id: number) {\n\ttry {\n\t\tawait openWorkspace(id);\n\t\tconst detail = await getWorkspace(id);\n\t\tactiveWorkspace.set(detail);\n\t\tawait loadWorkspaces();\n\t} catch (e) {\n\t\tconsole.warn('Failed to set active workspace:', e);\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:17-27",
+            "annotation": "Orchestrates multiple operations: calls backend API, updates the active workspace store, then refreshes the workspace list. Two stores update, plus the derived activeWorkspaceId recomputes."
+          }
+        ]
+      }
+    },
+    {
+      "id": "concept-subscribe-imperative",
+      "title": "subscribe() for Imperative Code",
+      "type": "concept",
+      "order": 6,
+      "content_md": "The `$` prefix only works inside Svelte components (`.svelte` files). In plain TypeScript files, you use `.subscribe()` to read a store's value. The subscribe-and-immediately-unsubscribe pattern (`.subscribe(cb)()`) reads the current value once without setting up a permanent listener.\n\n**Python Comparison:** The subscribe-and-unsubscribe pattern is like peeking at a value: `current_value = store.get_current_value()`. It's a bit awkward because stores are designed for reactive subscriptions, not imperative reads.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export async function refreshActiveWorkspace() {\n\tlet currentId: number | null = null;\n\tactiveWorkspace.subscribe(ws => { currentId = ws?.id ?? null; })();\n\tif (currentId !== null) {\n\t\ttry {\n\t\t\tconst detail = await getWorkspace(currentId);\n\t\t\tactiveWorkspace.set(detail);\n\t\t} catch (e) {\n\t\t\tconsole.warn('Failed to refresh workspace:', e);\n\t\t}\n\t}\n}",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:33-44",
+            "annotation": "Line 35 is the key: .subscribe(callback) registers a listener and immediately calls it with the current value, returning an unsubscribe function. The trailing () calls that unsubscribe function immediately. Net effect: read the current value once."
+          },
+          {
+            "language": "typescript",
+            "code": "export function clearActiveWorkspace() {\n\tactiveWorkspace.set(null);\n}",
+            "file_reference": "frontend/src/lib/stores/workspaces.ts:29-31",
+            "annotation": "The simplest store operation: set to null. This triggers activeWorkspaceId to recompute to null, and any component checking $activeWorkspace will see no workspace is selected."
+          }
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 7,
+      "content_md": "WellBegun uses stores extensively with a consistent architecture: each entity type has a store file (writable store + load functions), an API file (fetch calls), and components that import from both. The KnowledgeGraph component alone imports stores from 8 different files.\n\n### Store Files\n\n| File | Stores | Functions | Description |\n|------|--------|-----------|-------------|\n| `frontend/src/lib/stores/collections.ts` | `collections` | `loadCollections` | Collection list — simplest store pattern (1 writable, 1 load function) |\n| `frontend/src/lib/stores/workspaces.ts` | `workspaces`, `activeWorkspace`, `activeWorkspaceId` | `loadWorkspaces`, `setActiveWorkspace`, `clearActiveWorkspace`, `refreshActiveWorkspace` | Workspace management — demonstrates writable, derived, and multi-step orchestration |\n| `frontend/src/lib/stores/projects.ts` | `projects` | `loadProjects` | Project list — same pattern as collections |\n| `frontend/src/lib/stores/logs.ts` | `logs` | `loadLogs` | Log entries |\n| `frontend/src/lib/stores/notes.ts` | `notes` | `loadNotes` | Notes |\n| `frontend/src/lib/stores/knowledgeGraph.ts` | `boardNodes`, `triples`, `hiddenGraphEntities`, `graphFilterPanelOpen` | `loadBoard`, `loadTriples` | Knowledge graph data — multiple stores for graph visualization state |",
+      "metadata": {
+        "store_files": [
+          {
+            "file": "frontend/src/lib/stores/collections.ts",
+            "stores": ["collections"],
+            "functions": ["loadCollections"],
+            "description": "Collection list — simplest store pattern (1 writable, 1 load function)"
+          },
+          {
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "stores": ["workspaces", "activeWorkspace", "activeWorkspaceId"],
+            "functions": ["loadWorkspaces", "setActiveWorkspace", "clearActiveWorkspace", "refreshActiveWorkspace"],
+            "description": "Workspace management — demonstrates writable, derived, and multi-step orchestration"
+          },
+          {
+            "file": "frontend/src/lib/stores/projects.ts",
+            "stores": ["projects"],
+            "functions": ["loadProjects"],
+            "description": "Project list — same pattern as collections"
+          },
+          {
+            "file": "frontend/src/lib/stores/logs.ts",
+            "stores": ["logs"],
+            "functions": ["loadLogs"],
+            "description": "Log entries"
+          },
+          {
+            "file": "frontend/src/lib/stores/notes.ts",
+            "stores": ["notes"],
+            "functions": ["loadNotes"],
+            "description": "Notes"
+          },
+          {
+            "file": "frontend/src/lib/stores/knowledgeGraph.ts",
+            "stores": ["boardNodes", "triples", "hiddenGraphEntities", "graphFilterPanelOpen"],
+            "functions": ["loadBoard", "loadTriples"],
+            "description": "Knowledge graph data — multiple stores for graph visualization state"
+          }
+        ],
+        "component_example": {
+          "file": "frontend/src/lib/components/graph/KnowledgeGraph.svelte",
+          "lines": "4-13",
+          "description": "Imports stores from 8 different store files (knowledgeGraph, focus, projects, logs, notes, activities, sources, actors, plans, collections, categories) — demonstrating how stores enable a single component to consume shared state from across the application."
+        }
+      }
+    },
+    {
+      "id": "example-trace-data-flow",
+      "title": "Trace Data Flow from Backend to UI",
+      "type": "example",
+      "order": 8,
+      "content_md": "Follow the complete path of collection data from API call to rendered component.\n\n**Step 1:** Component calls the load function on mount\n```typescript\nonMount(() => { loadCollections(); });\n```\n\n**Step 2:** Load function calls the API and updates the store\n```typescript\ncollections.set(await getCollections(categoryId));\n```\n*File: `frontend/src/lib/stores/collections.ts:9`*\n\n**Step 3:** The API function makes an HTTP fetch request to `GET /api/collections/`\n```typescript\nconst res = await fetch(url); return res.json();\n```\n*File: `frontend/src/lib/api/collections.ts`*\n\n**Step 4:** The store notifies all subscribers, and every component using `$collections` re-renders with the new data\n```svelte\n{#each $collections as collection}\n    <CollectionCard {collection} />\n{/each}\n```\n\n**Key Insight:** The entire chain is: `onMount` -> `loadCollections()` -> `fetch()` -> JSON response -> `collections.set(data)` -> UI re-renders. Every component using `$collections` updates simultaneously.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "Component calls the load function on mount",
+            "code": "onMount(() => { loadCollections(); });",
+            "file": null
+          },
+          {
+            "step": 2,
+            "description": "Load function calls the API and updates the store",
+            "code": "collections.set(await getCollections(categoryId));",
+            "file": "frontend/src/lib/stores/collections.ts",
+            "lines": "9"
+          },
+          {
+            "step": 3,
+            "description": "The API function makes an HTTP fetch request to GET /api/collections/",
+            "code": "const res = await fetch(url); return res.json();",
+            "file": "frontend/src/lib/api/collections.ts"
+          },
+          {
+            "step": 4,
+            "description": "The store notifies all subscribers, and every component using $collections re-renders with the new data",
+            "code": "{#each $collections as collection}\n    <CollectionCard {collection} />\n{/each}",
+            "file": null
+          }
+        ],
+        "key_insight": "The entire chain is: onMount → loadCollections() → fetch() → JSON response → collections.set(data) → UI re-renders. Every component using $collections updates simultaneously."
+      }
+    },
+    {
+      "id": "example-workspace-store-walkthrough",
+      "title": "The Workspace Store — writable, derived, and Orchestration",
+      "type": "example",
+      "order": 9,
+      "content_md": "Walk through `workspaces.ts` to see all store concepts working together.\n\n**Step 1:** Two writable stores hold the raw data\n```typescript\nexport const workspaces = writable<Workspace[]>([]);\nexport const activeWorkspace = writable<WorkspaceDetail | null>(null);\n```\n*File: `frontend/src/lib/stores/workspaces.ts:5-6`*\n\n**Step 2:** A derived store extracts a convenient computed value\n```typescript\nexport const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);\n```\n*File: `frontend/src/lib/stores/workspaces.ts:7`*\n\n**Step 3:** `setActiveWorkspace` orchestrates API calls and multiple store updates\n```typescript\nawait openWorkspace(id);\nconst detail = await getWorkspace(id);\nactiveWorkspace.set(detail);\nawait loadWorkspaces();\n```\n*File: `frontend/src/lib/stores/workspaces.ts:17-27`*\n\n**Step 4:** `clearActiveWorkspace` is the simplest possible store operation — setting to null triggers the derived store to recompute\n```typescript\nexport function clearActiveWorkspace() {\n\tactiveWorkspace.set(null);\n}\n```\n*File: `frontend/src/lib/stores/workspaces.ts:29-31`*\n\n**Key Insight:** A single call to `setActiveWorkspace(7)` updates three stores (`activeWorkspace`, `activeWorkspaceId`, `workspaces`) and causes every component subscribed to any of them to re-render with fresh data.",
+      "metadata": {
+        "guided_steps": [
+          {
+            "step": 1,
+            "description": "Two writable stores hold the raw data",
+            "code": "export const workspaces = writable<Workspace[]>([]);\nexport const activeWorkspace = writable<WorkspaceDetail | null>(null);",
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "5-6"
+          },
+          {
+            "step": 2,
+            "description": "A derived store extracts a convenient computed value",
+            "code": "export const activeWorkspaceId = derived(activeWorkspace, ($ws) => $ws?.id ?? null);",
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "7"
+          },
+          {
+            "step": 3,
+            "description": "setActiveWorkspace orchestrates API calls and multiple store updates",
+            "code": "await openWorkspace(id);\nconst detail = await getWorkspace(id);\nactiveWorkspace.set(detail);\nawait loadWorkspaces();",
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "17-27"
+          },
+          {
+            "step": 4,
+            "description": "clearActiveWorkspace is the simplest possible store operation — setting to null triggers the derived store to recompute",
+            "code": "export function clearActiveWorkspace() {\n\tactiveWorkspace.set(null);\n}",
+            "file": "frontend/src/lib/stores/workspaces.ts",
+            "lines": "29-31"
+          }
+        ],
+        "key_insight": "A single call to setActiveWorkspace(7) updates three stores (activeWorkspace, activeWorkspaceId, workspaces) and causes every component subscribed to any of them to re-render with fresh data."
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 10,
+      "content_md": "### Exercise 1: Read a Store File\n\nOpen `frontend/src/lib/stores/projects.ts`. It follows the same pattern as `collections.ts`. Identify: (a) What type does the store hold? (b) What is the initial value? (c) What API function populates it?\n\n### Exercise 2: Trace a Derived Store\n\nIn `frontend/src/lib/stores/workspaces.ts`, the `activeWorkspaceId` is derived from `activeWorkspace`. If `activeWorkspace` is set to `{ id: 42, name: 'Research', ... }`, what will `activeWorkspaceId` hold? What if `activeWorkspace` is set to `null`?\n\n### Exercise 3: Predict the Update Cascade\n\nWhen `setActiveWorkspace(7)` is called in `workspaces.ts`, list every store that changes value. Which components would re-render?",
+      "metadata": {
+        "exercises": [
+          {
+            "id": "read-store-file",
+            "title": "Read a Store File",
+            "task": "Open frontend/src/lib/stores/projects.ts. It follows the same pattern as collections.ts. Identify: (a) What type does the store hold? (b) What is the initial value? (c) What API function populates it?",
+            "target_file": "frontend/src/lib/stores/projects.ts",
+            "hint": "The file is only 13 lines long and follows the exact same structure as collections.ts. Look at the writable generic type, the initial value in parentheses, and the function called inside set().",
+            "expected_answer": "(a) Project[] (array of Project objects), (b) [] (empty array), (c) getProjects() from the API module."
+          },
+          {
+            "id": "trace-derived-store",
+            "title": "Trace a Derived Store",
+            "task": "In frontend/src/lib/stores/workspaces.ts, the activeWorkspaceId is derived from activeWorkspace. If activeWorkspace is set to { id: 42, name: 'Research', ... }, what will activeWorkspaceId hold? What if activeWorkspace is set to null?",
+            "target_file": "frontend/src/lib/stores/workspaces.ts",
+            "hint": "Look at the derivation function: ($ws) => $ws?.id ?? null. When the workspace object exists, $ws?.id extracts the id field. When $ws is null, optional chaining (?.) short-circuits to undefined, and ?? converts that to null.",
+            "expected_answer": "When activeWorkspace is { id: 42, ... }, activeWorkspaceId is 42. When activeWorkspace is null, activeWorkspaceId is null."
+          },
+          {
+            "id": "predict-update-cascade",
+            "title": "Predict the Update Cascade",
+            "task": "When setActiveWorkspace(7) is called in workspaces.ts, list every store that changes value. Which components would re-render?",
+            "target_file": "frontend/src/lib/stores/workspaces.ts",
+            "hint": "The function calls activeWorkspace.set(detail) (updating one store, which triggers activeWorkspaceId to recompute) and then loadWorkspaces() (which calls workspaces.set(...)). So three stores change.",
+            "expected_answer": "Three stores change: activeWorkspace, activeWorkspaceId (derived), and workspaces. Any component using $activeWorkspace, $activeWorkspaceId, or $workspaces will re-render."
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 11,
+      "content_md": "Test your understanding of reactive stores and state management as used in the WellBegun project.",
+      "metadata": {
+        "questions": [
+          {
+            "id": "q1",
+            "question": "What is the difference between writable and derived stores?",
+            "options": [
+              "writable stores are private, derived stores are public",
+              "writable stores can be set directly, derived stores compute their value from other stores",
+              "derived stores are faster than writable stores",
+              "writable stores hold arrays, derived stores hold single values"
+            ],
+            "correct_index": 1,
+            "explanation": "A writable store has .set() and .update() methods. A derived store is read-only and automatically recomputes when its source store(s) change. In WellBegun, activeWorkspace is writable while activeWorkspaceId is derived."
+          },
+          {
+            "id": "q2",
+            "question": "In a Svelte component, what does the $ prefix do when used with a store?",
+            "options": [
+              "It marks the variable as constant",
+              "It converts the store to a string",
+              "It auto-subscribes to the store and provides the current value reactively",
+              "It creates a copy of the store"
+            ],
+            "correct_index": 2,
+            "explanation": "The $ prefix is Svelte syntactic sugar. Writing $collections in a component automatically subscribes when the component mounts, updates whenever the store value changes, and unsubscribes when the component is destroyed."
+          },
+          {
+            "id": "q3",
+            "question": "In collections.ts, what does collections.set(await getCollections(categoryId)) do?",
+            "options": [
+              "It appends new collections to the existing list",
+              "It replaces the entire store value with the API response",
+              "It filters the collections by category",
+              "It creates a new store"
+            ],
+            "correct_index": 1,
+            "explanation": ".set() replaces the store's value entirely. The await getCollections(categoryId) fetches data from the backend API, and then the entire result becomes the new store value. To append, you'd use .update(current => [...current, ...newItems])."
+          },
+          {
+            "id": "q4",
+            "question": "Why does refreshActiveWorkspace use the pattern activeWorkspace.subscribe(ws => { ... })()?",
+            "options": [
+              "It creates a permanent subscription to track changes",
+              "It reads the current value once by subscribing and immediately unsubscribing",
+              "It resets the store to its initial value",
+              "It triggers all other subscribers to re-run"
+            ],
+            "correct_index": 1,
+            "explanation": ".subscribe() calls the callback immediately with the current value and returns an unsubscribe function. The trailing () calls that unsubscribe function right away. Net effect: a one-time read of the store's current value. This pattern is needed in plain TypeScript files where the $ prefix isn't available."
+          },
+          {
+            "id": "q5",
+            "question": "In the WellBegun project, what consistent pattern do store files follow?",
+            "options": [
+              "Each store file contains a single writable store and nothing else",
+              "Each store file exports a writable store paired with async functions that fetch data from the API and update the store",
+              "Store files only contain derived stores",
+              "Store files connect directly to the database"
+            ],
+            "correct_index": 1,
+            "explanation": "WellBegun's consistent architecture: collections.ts exports collections (writable) and loadCollections() (async fetch + set). workspaces.ts exports workspaces, activeWorkspace, and functions like loadWorkspaces(), setActiveWorkspace(). This pattern separates data storage from data fetching while keeping them co-located."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 12,
+      "content_md": "Curated resources for deepening your understanding of Svelte stores and reactive state management.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Svelte Stores Documentation",
+            "url": "https://svelte.dev/docs/svelte/stores",
+            "type": "official-docs"
+          },
+          {
+            "title": "Svelte Tutorial: Stores",
+            "url": "https://learn.svelte.dev/tutorial/writable-stores",
+            "type": "tutorial"
+          },
+          {
+            "title": "Svelte Reactive Declarations",
+            "url": "https://svelte.dev/docs/svelte/$state",
+            "type": "official-docs"
+          },
+          {
+            "title": "State Management Patterns in SvelteKit",
+            "url": "https://kit.svelte.dev/docs/state-management",
+            "type": "official-docs"
+          }
+        ]
+      }
+    }
+  ]
+}

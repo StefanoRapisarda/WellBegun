@@ -202,6 +202,9 @@
 					{#if activity.description}
 						<p class="item-desc">{activity.description}</p>
 					{/if}
+					{#if activity.outcome}
+						<p class="item-outcome"><span class="outcome-label">Outcome:</span> {activity.outcome}</p>
+					{/if}
 					{#if entityTags[activity.id]?.length}
 						<div class="tag-badges">
 							{#each entityTags[activity.id] as tag (tag.id)}
@@ -249,6 +252,8 @@
 	.item-header { display: flex; align-items: center; gap: 8px; }
 	.item-title { flex: 1; background: none; border: none; cursor: pointer; font-weight: 500; font-size: 0.9rem; text-align: left; padding: 0; color: #111827; }
 	.item-desc { font-size: 0.8rem; color: #6b7280; margin: 8px 0 0; white-space: pre-wrap; }
+	.item-outcome { font-size: 0.8rem; color: #4b5563; margin: 6px 0 0; white-space: pre-wrap; background: #f0fdf4; padding: 4px 8px; border-radius: 4px; border-left: 3px solid #86efac; }
+	.outcome-label { font-weight: 600; color: #15803d; font-size: 0.75rem; }
 	.duration-badge { font-size: 0.7rem; padding: 2px 6px; background: #f0fdf4; border-radius: 4px; color: #15803d; }
 	.date-badge { font-size: 0.7rem; padding: 2px 6px; background: #eff6ff; border-radius: 4px; color: #2563eb; }
 	.status-btn { font-size: 0.65rem; padding: 2px 6px; background: #f3f4f6; border-radius: 4px; color: #6b7280; flex-shrink: 0; border: 1px solid transparent; cursor: pointer; font-weight: 500; }

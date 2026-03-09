@@ -40,6 +40,7 @@ def create_activity(data: ActivityCreate, db: Session = Depends(get_db)):
         position=data.position,
         header=data.header,
         status=data.status,
+        outcome=data.outcome,
     )
     if data.plan_id and not data.header:
         # Only auto-add to the default "has activities" collection when no header.

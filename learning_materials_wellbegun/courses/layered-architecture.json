@@ -1,0 +1,234 @@
+{
+  "id": "course_006",
+  "slug": "layered-architecture",
+  "title": "Layered Architecture",
+  "technology": "FastAPI/Svelte",
+  "category": "pattern",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": ["client-server-architecture"],
+    "knowledge": ["Basic understanding of functions and modules in Python"]
+  },
+  "user_familiarity": "beginner",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "Layered architecture is a design pattern that organizes code into horizontal layers, each with a distinct responsibility. Each layer only talks to the layer directly below it, creating a clear chain of delegation. When you modify one layer (e.g., switching databases), the layers above it remain unaffected -- as long as the interface between them stays the same.\n\nThink of it like a well-organized kitchen: the front-of-house (waiter) takes the order, passes it to the kitchen (chef), who fetches ingredients from the pantry (storage). The waiter never goes into the pantry, and the pantry does not know what dish is being made.\n\nIn WellBegun, this pattern appears on both the backend (Python/FastAPI) and the frontend (Svelte/TypeScript), and understanding it will help you know exactly where to put new code.",
+      "metadata": {
+        "key_takeaways": [
+          "Code is organized into layers: presentation (routers), business logic (services), data access (models/ORM)",
+          "Each layer only depends on the layer directly below it",
+          "Changes in one layer do not ripple through the others (as long as interfaces are preserved)",
+          "Both the backend and frontend follow this pattern independently"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### The Three Backend Layers\n\n```\nHTTP Request\n    |\n    v\n[Presentation Layer]  --  Routers (src/wellbegun/routers/)\n    |                     Handles HTTP: parsing requests, returning responses,\n    |                     status codes, error translation\n    v\n[Business Logic Layer]  --  Services (src/wellbegun/services/)\n    |                       Contains the rules: what happens when you create,\n    |                       update, delete. Orchestrates operations.\n    v\n[Data Access Layer]  --  Models + Database (src/wellbegun/models/, database.py)\n                         Knows how to store and retrieve data.\n```\n\n### Layer Responsibilities\n\n**Presentation Layer (Routers)**: Receives HTTP requests, validates input via Pydantic schemas, calls services, translates errors to HTTP status codes, shapes responses.\n\n**Business Logic Layer (Services)**: Contains actual logic (creating entities, managing tags, cleanup). Does NOT know about HTTP. Receives plain Python arguments, returns Python objects.\n\n**Data Access Layer (Models + ORM)**: Defines database schema as Python classes. Provides sessions for transactions. Translates Python operations to SQL.\n\n### Dependency Direction\n\nUpper layers depend on lower layers, never the reverse:\n- Routers import services\n- Services import models\n- Models do NOT import services or routers\n\n### The Frontend Layers\n\n```\nUser Interaction\n    |\n    v\n[Components]  --  Svelte components\n    v\n[Stores]  --  State management\n    v\n[API Client]  --  HTTP communication\n```\n\nComponents call stores. Stores call API functions. API functions call the backend.",
+      "metadata": {
+        "key_takeaways": [
+          "Presentation layer handles HTTP concerns: request parsing, response shaping, status codes",
+          "Business logic layer contains rules and orchestration, independent of HTTP",
+          "Data access layer defines schema and manages persistence",
+          "Dependencies flow downward: routers -> services -> models, never upward",
+          "Frontend mirrors the pattern: components -> stores -> API client"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "### Backend: The Note Creation Flow\n\n**Layer 1 -- Router** receives HTTP POST, validates body, calls service:\n```python\n@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)\n```\n\n**Layer 2 -- Service** creates the object, manages tags, commits:\n```python\ndef create(db: Session, title: str, content: str | None = None) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note\n```\n\n**Layer 3 -- Model** defines the schema:\n```python\nclass Note(Base):\n    __tablename__ = \"notes\"\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n```\n\n### Frontend: The Note Loading Flow\n\n**Component** calls store: `onMount(() => loadNotes())`\n\n**Store** calls API client:\n```typescript\nexport async function loadNotes() {\n    notes.set(await getNotes());\n}\n```\n\n**API Client** calls backend:\n```typescript\nexport async function getNotes(): Promise<Note[]> {\n    const res = await fetch(`${BASE}/`);\n    return res.json();\n}\n```",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)",
+            "file_reference": "src/wellbegun/routers/notes.py:24-26",
+            "annotation": "Presentation layer: receives HTTP POST, validates via NoteCreate schema, delegates to service, returns 201."
+          },
+          {
+            "language": "python",
+            "code": "def create(db: Session, title: str, content: str | None = None) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:16-27",
+            "annotation": "Business logic layer: creates Note, manages entity tags, commits transaction. No HTTP concepts."
+          },
+          {
+            "language": "python",
+            "code": "class Note(Base):\n    __tablename__ = \"notes\"\n    id: Mapped[int] = mapped_column(Integer, primary_key=True)\n    title: Mapped[str] = mapped_column(String(255), nullable=False)\n    content: Mapped[str | None] = mapped_column(Text, nullable=True)",
+            "file_reference": "src/wellbegun/models/note.py:9-14",
+            "annotation": "Data access layer: defines the database schema. Does not know how it is used."
+          },
+          {
+            "language": "typescript",
+            "code": "export const notes = writable<Note[]>([]);\n\nexport async function loadNotes() {\n    try {\n        notes.set(await getNotes());\n    } catch (e) {\n        console.warn('Failed to load notes:', e);\n    }\n}",
+            "file_reference": "frontend/src/lib/stores/notes.ts:5-13",
+            "annotation": "Frontend store layer: manages state, calls API client, notifies subscribers."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function getNotes(): Promise<Note[]> {\n    const res = await fetch(`${BASE}/`);\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:5-8",
+            "annotation": "Frontend API client layer: handles HTTP communication with the backend."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Tracing a Create-Note Request Through All Layers\n\n**Step 1 -- Frontend Component**: User clicks 'Create':\n```typescript\nconst newNote = await createNote({ title: \"My Idea\", content: \"Some thoughts\" });\n```\n\n**Step 2 -- Frontend API Client**: Sends HTTP POST:\n```typescript\nconst res = await fetch('/api/notes/', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ title: \"My Idea\", content: \"Some thoughts\" })\n});\n```\n\n**Step 3 -- Backend Router**: Validates body as NoteCreate, calls service:\n```python\nnote_service.create(db, title=data.title, content=data.content)\n```\n\n**Step 4 -- Backend Service**: Creates Note, manages tags, commits:\n```python\nnote = Note(title=\"My Idea\", content=\"Some thoughts\")\ndb.add(note)\ndb.flush()  # INSERT → id = 42\ncreate_entity_tag(db, \"My Idea\", \"note\", \"note\", 42)\ndb.commit()\n```\n\n**Step 5 -- Backend Router**: Serializes via NoteOut, returns 201 with JSON.\n\n**Step 6 -- Frontend API Client**: Parses JSON response.\n\n**Step 7 -- Frontend Component**: Receives typed Note object, updates UI.\n\nData transforms at each boundary: JSON ↔ Pydantic schema ↔ plain arguments ↔ ORM objects ↔ SQL.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "typescript",
+            "code": "export async function createNote(data: { title: string; content?: string }): Promise<Note> {\n    const res = await fetch(`${BASE}/`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(data)\n    });\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:15-22",
+            "annotation": "Frontend API layer: constructs the HTTP request with JSON body and parses the response."
+          },
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)",
+            "file_reference": "src/wellbegun/routers/notes.py:24-26",
+            "annotation": "Backend router: extracts validated fields from schema and passes plain arguments to the service."
+          },
+          {
+            "language": "python",
+            "code": "def create(db: Session, title: str, content: str | None = None) -> Note:\n    note = Note(title=title, content=content)\n    db.add(note)\n    db.flush()\n    create_entity_tag(db, title, \"note\", \"note\", note.id)\n    db.commit()\n    db.refresh(note)\n    return note",
+            "file_reference": "src/wellbegun/services/note_service.py:16-27",
+            "annotation": "Backend service: orchestrates creation and tag management in a single transaction."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Identify the Layer\n\n**Task**: For each code snippet, identify which layer it belongs to:\n1. `raise HTTPException(status_code=404, detail=\"Note not found\")`\n2. `db.query(Note).filter(Note.id == note_id).first()`\n3. `__tablename__ = \"notes\"`\n4. `note.is_active = True; db.commit()`\n5. `response_model=list[NoteOut]`\n\n<details>\n<summary>Hint</summary>\n1) Presentation -- HTTPException is HTTP-specific. 2) Service -- query within business logic. 3) Data access/model -- schema definition. 4) Service -- state modification and commit. 5) Presentation -- response shaping.\n</details>\n\n### Exercise 2: Where Does New Logic Go?\n\n**Task**: For each requirement, identify which layer should change:\n1. \"When deleting a note, also delete all related knowledge triples\"\n2. \"Return 403 Forbidden when a user tries to delete someone else's note\"\n3. \"Add a word_count column to the notes table\"\n4. \"When creating a note, auto-generate a summary using an LLM\"\n\n<details>\n<summary>Hint</summary>\n1) Service layer -- orchestrating related deletions is business logic. 2) Presentation layer -- HTTP status code translation. 3) Data access/model layer -- schema change. 4) Service layer -- LLM integration is business logic.\n</details>",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "For five code snippets (HTTPException, db.query, __tablename__, setattr+commit, response_model), identify which architectural layer each belongs to.",
+            "hints": [
+              "HTTPException and response_model are HTTP/presentation concerns.",
+              "__tablename__ is a model/data-access declaration.",
+              "db.query() and attribute modification + commit are service/business-logic operations."
+            ],
+            "solution_reference": "src/wellbegun/routers/notes.py, src/wellbegun/services/note_service.py, src/wellbegun/models/note.py"
+          },
+          {
+            "task": "For four new requirements (cascade delete, authorization error, new column, LLM summary), identify which layer should change and why.",
+            "hints": [
+              "Cascade deletion is business logic (service layer).",
+              "HTTP status codes are presentation concerns (router layer).",
+              "Schema changes belong in the model layer.",
+              "External service integration (LLM) is business logic (service layer)."
+            ],
+            "solution_reference": "src/wellbegun/services/note_service.py:44-52"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of layered architecture as applied in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "Which layer is responsible for returning HTTP 404 when a note is not found?",
+            "options": [
+              "The model layer (Note class)",
+              "The service layer (note_service.py)",
+              "The presentation layer (router in notes.py)",
+              "The database layer (database.py)"
+            ],
+            "correct_index": 2,
+            "explanation": "The service returns None when not found. The router translates this into HTTPException(status_code=404). The service should not know about HTTP status codes."
+          },
+          {
+            "question": "Why does the service layer accept plain Python arguments (title: str) rather than Pydantic schemas (NoteCreate)?",
+            "options": [
+              "Pydantic is too slow for the service layer",
+              "So the service can be called from any context (API, CLI, tests) without HTTP-specific types",
+              "Services cannot import Pydantic",
+              "There is no particular reason"
+            ],
+            "correct_index": 1,
+            "explanation": "If the service accepted NoteCreate, it would be coupled to the API layer. Plain arguments allow the same function to be called from CLI tools, tests, or background jobs."
+          },
+          {
+            "question": "In the frontend, why does the store call the API client instead of using fetch directly?",
+            "options": [
+              "Svelte does not support fetch",
+              "Separation of concerns: the store manages state, the API client handles HTTP",
+              "The API client is faster than fetch",
+              "fetch only works in components"
+            ],
+            "correct_index": 1,
+            "explanation": "The store manages state and notifies subscribers. The API client constructs requests and parses responses. If the API URL changes, only the API client needs updating."
+          },
+          {
+            "question": "Which direction do dependencies flow in a layered architecture?",
+            "options": [
+              "Lower layers depend on upper layers",
+              "Upper layers depend on lower layers",
+              "All layers depend on each other",
+              "Dependencies flow in both directions"
+            ],
+            "correct_index": 1,
+            "explanation": "Routers import services, services import models. Models never import services or routers. This one-way chain keeps layers decoupled and independently replaceable."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of layered architecture.",
+      "metadata": {
+        "links": [
+          {
+            "title": "Layered Architecture Pattern (Mark Richards)",
+            "url": "https://www.oreilly.com/library/view/software-architecture-patterns/9781491971437/ch01.html",
+            "type": "book-chapter"
+          },
+          {
+            "title": "FastAPI Project Structure Best Practices",
+            "url": "https://fastapi.tiangolo.com/tutorial/bigger-applications/",
+            "type": "official-docs"
+          },
+          {
+            "title": "Separation of Concerns (Wikipedia)",
+            "url": "https://en.wikipedia.org/wiki/Separation_of_concerns",
+            "type": "reference"
+          },
+          {
+            "title": "Clean Architecture (Robert C. Martin)",
+            "url": "https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html",
+            "type": "article"
+          }
+        ]
+      }
+    }
+  ]
+}

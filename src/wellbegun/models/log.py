@@ -44,6 +44,7 @@ class Activity(Base):
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     header: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="todo", nullable=False)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     activity_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

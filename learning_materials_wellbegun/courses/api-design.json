@@ -1,0 +1,232 @@
+{
+  "id": "course_005",
+  "slug": "api-design",
+  "title": "API Design",
+  "technology": "HTTP/REST/FastAPI",
+  "category": "concept",
+  "difficulty": "beginner",
+  "estimated_minutes": 20,
+  "prerequisites": {
+    "courses": ["client-server-architecture", "crud-operations"],
+    "knowledge": ["Basic understanding of HTTP requests", "JSON data format"]
+  },
+  "user_familiarity": "beginner",
+  "relevance_to_project": "core",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "type": "overview",
+      "order": 1,
+      "content_md": "API design is the practice of defining how software components communicate with each other. In a web application like WellBegun, the API is the contract between the frontend (what the user sees) and the backend (where data lives). Good API design means consistent, predictable, and self-documenting endpoints -- when you see `GET /api/notes/42`, you can guess what it does without reading any documentation.\n\nAs a data scientist, you have consumed APIs (calling endpoints to fetch data), but you may not have thought deeply about why they are structured the way they are. This course covers the conventions and reasoning behind WellBegun's API design so you can extend it confidently for new entity types.",
+      "metadata": {
+        "key_takeaways": [
+          "API endpoints use nouns (resources) in URLs, not verbs -- the HTTP method provides the verb",
+          "Consistent naming conventions make APIs predictable and self-documenting",
+          "HTTP status codes communicate the outcome of each request",
+          "Pydantic schemas validate input and shape output, acting as a contract between frontend and backend",
+          "Good API design separates what the client sends (create/update schemas) from what the server returns (output schemas)"
+        ]
+      }
+    },
+    {
+      "id": "concept",
+      "title": "Core Concepts",
+      "type": "concept",
+      "order": 2,
+      "content_md": "### Resource Naming: Nouns, Not Verbs\n\nREST APIs identify resources (things) with URL paths and use HTTP methods for actions. The URL should be a noun:\n\n| Correct | Incorrect |\n|---------|----------|\n| `GET /api/notes` | `GET /api/getNotes` |\n| `POST /api/notes` | `POST /api/createNote` |\n| `DELETE /api/notes/5` | `POST /api/deleteNote?id=5` |\n\n### HTTP Methods as Verbs\n\n| Method | Purpose | Idempotent? | Request Body? |\n|--------|---------|-------------|---------------|\n| GET | Retrieve resource(s) | Yes | No |\n| POST | Create a new resource | No | Yes |\n| PUT | Update an existing resource | Yes | Yes |\n| DELETE | Remove a resource | Yes | No |\n\n**Idempotent** means calling it multiple times has the same effect as calling it once.\n\n### Status Codes\n\n| Code | Meaning | When Used in WellBegun |\n|------|---------|------------------------|\n| **200** | OK | Successful GET, PUT, DELETE |\n| **201** | Created | Successful POST |\n| **404** | Not Found | Resource does not exist |\n| **422** | Unprocessable Entity | Validation failure |\n\n### Request and Response Bodies\n\nGET and DELETE have no body. POST and PUT carry JSON. The response varies: arrays for list endpoints, objects for single-resource endpoints, `{\"ok\": true}` for delete confirmations.\n\n### Content Negotiation\n\nThe `Content-Type: application/json` header tells the server the request body is JSON. FastAPI automatically deserializes JSON into Pydantic schemas.",
+      "metadata": {
+        "key_takeaways": [
+          "URLs use plural nouns to identify resource types: /api/notes, /api/projects, /api/sources",
+          "HTTP methods provide the action: GET reads, POST creates, PUT updates, DELETE removes",
+          "Status codes 200, 201, 404, and 422 cover the most common API outcomes",
+          "Idempotency matters: GET, PUT, DELETE are safe to retry; POST is not",
+          "Content-Type headers signal the format of the request body"
+        ]
+      }
+    },
+    {
+      "id": "context",
+      "title": "In This Project",
+      "type": "context",
+      "order": 3,
+      "content_md": "WellBegun's notes router in `src/wellbegun/routers/notes.py` demonstrates all these conventions. Each endpoint follows the pattern: receive request, call service, handle missing resources with 404, return shaped response.\n\nThe Pydantic schemas in `src/wellbegun/schemas/note.py` define three distinct shapes:\n- `NoteCreate` -- what the client sends to create (requires title)\n- `NoteUpdate` -- what the client sends to update (all fields optional)\n- `NoteOut` -- what the server returns (includes id, timestamps, flags)\n\n`model_config = {\"from_attributes\": True}` allows Pydantic to read attributes directly from SQLAlchemy ORM objects.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "router = APIRouter(prefix=\"/notes\", tags=[\"notes\"])\n\n@router.get(\"/\", response_model=list[NoteOut])\ndef list_notes(db: Session = Depends(get_db)):\n    return note_service.get_all(db)\n\n@router.get(\"/{note_id}\", response_model=NoteOut)\ndef get_note(note_id: int, db: Session = Depends(get_db)):\n    note = note_service.get_by_id(db, note_id)\n    if not note:\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return note\n\n@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)\n\n@router.put(\"/{note_id}\", response_model=NoteOut)\ndef update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db)):\n    updates = data.model_dump(exclude_unset=True)\n    note = note_service.update(db, note_id, **updates)\n    if not note:\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return note\n\n@router.delete(\"/{note_id}\")\ndef delete_note(note_id: int, db: Session = Depends(get_db)):\n    if not note_service.delete(db, note_id):\n        raise HTTPException(status_code=404, detail=\"Note not found\")\n    return {\"ok\": True}",
+            "file_reference": "src/wellbegun/routers/notes.py:8-42",
+            "annotation": "The complete CRUD router for notes. Notice: nouns in URLs, HTTP methods as verbs, 201 for creation, 404 for missing resources, response_model for output shaping."
+          },
+          {
+            "language": "python",
+            "code": "class NoteCreate(BaseModel):\n    title: str\n    content: str | None = None\n\nclass NoteUpdate(BaseModel):\n    title: str | None = None\n    content: str | None = None\n\nclass NoteOut(BaseModel):\n    id: int\n    title: str\n    content: str | None = None\n    is_active: bool\n    is_archived: bool\n    created_at: datetime\n    updated_at: datetime\n\n    model_config = {\"from_attributes\": True}",
+            "file_reference": "src/wellbegun/schemas/note.py:1-25",
+            "annotation": "Three schemas for three purposes: NoteCreate validates creation input, NoteUpdate validates partial updates, NoteOut shapes the API response."
+          }
+        ]
+      }
+    },
+    {
+      "id": "example",
+      "title": "Guided Examples",
+      "type": "example",
+      "order": 4,
+      "content_md": "### Example 1: How NoteCreate Validates Input\n\nWhen the frontend sends `POST /api/notes` with `{\"title\": \"My new note\"}`, FastAPI deserializes the JSON into a `NoteCreate` object. If `title` were missing, FastAPI returns 422 before your code runs.\n\n```python\n@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)\n```\n\n### Example 2: How NoteOut Shapes Output\n\nThe service returns a SQLAlchemy ORM object, but the client receives only the fields defined in `NoteOut`. Fields on the ORM model that are not in `NoteOut` are excluded. `model_config = {\"from_attributes\": True}` allows Pydantic to read ORM attributes directly.\n\n### Example 3: Partial Updates with exclude_unset\n\n```python\nupdates = data.model_dump(exclude_unset=True)\nnote = note_service.update(db, note_id, **updates)\n```\n\nIf the client sends `{\"title\": \"Updated\"}` without `content`, `exclude_unset=True` produces `{\"title\": \"Updated\"}` -- not `{\"title\": \"Updated\", \"content\": None}`. This prevents accidentally overwriting content with NULL.",
+      "metadata": {
+        "code_examples": [
+          {
+            "language": "python",
+            "code": "@router.post(\"/\", response_model=NoteOut, status_code=201)\ndef create_note(data: NoteCreate, db: Session = Depends(get_db)):\n    return note_service.create(db, title=data.title, content=data.content)",
+            "file_reference": "src/wellbegun/routers/notes.py:24-26",
+            "annotation": "FastAPI validates the request body against NoteCreate before this function runs. Invalid input never reaches your code."
+          },
+          {
+            "language": "typescript",
+            "code": "export async function createNote(data: { title: string; content?: string }): Promise<Note> {\n    const res = await fetch(`${BASE}/`, {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify(data)\n    });\n    return res.json();\n}",
+            "file_reference": "frontend/src/lib/api/notes.ts:15-22",
+            "annotation": "The frontend counterpart: sends POST with JSON body, Content-Type header, and parses the typed response."
+          },
+          {
+            "language": "python",
+            "code": "updates = data.model_dump(exclude_unset=True)\nnote = note_service.update(db, note_id, **updates)",
+            "file_reference": "src/wellbegun/routers/notes.py:31-32",
+            "annotation": "exclude_unset=True ensures only explicitly provided fields are updated, preventing accidental NULL overwrites."
+          }
+        ]
+      }
+    },
+    {
+      "id": "exercise",
+      "title": "Exercises",
+      "type": "exercise",
+      "order": 5,
+      "content_md": "### Exercise 1: Design Endpoints for a New Entity\n\n**Task**: Imagine WellBegun adds a \"Bookmark\" entity with fields: `url` (required string), `label` (optional string), `is_favorite` (boolean, default false). Design the five standard endpoints: list all, get one, create, update, delete. For each, specify the HTTP method, URL path, success status code, and request/response body.\n\n<details>\n<summary>Hint</summary>\nFollow the notes pattern: GET /api/bookmarks (200), GET /api/bookmarks/{id} (200 or 404), POST /api/bookmarks (201, body: {url, label?}), PUT /api/bookmarks/{id} (200 or 404, body: optional fields), DELETE /api/bookmarks/{id} (200 or 404).\n</details>\n\n### Exercise 2: Identify Status Codes\n\n**Task**: For each scenario, identify the correct HTTP status code:\n1. GET /api/notes/999 -- note 999 does not exist\n2. POST /api/notes with `{\"title\": \"Hello\"}` succeeds\n3. POST /api/notes with `{}` (missing required title)\n4. PUT /api/notes/5 with `{\"title\": \"Updated\"}` succeeds\n5. DELETE /api/notes/5 succeeds\n\n<details>\n<summary>Hint</summary>\n1) 404, 2) 201, 3) 422, 4) 200, 5) 200. Check the status_code parameters and HTTPException raises in src/wellbegun/routers/notes.py.\n</details>",
+      "metadata": {
+        "exercises": [
+          {
+            "task": "Design five REST endpoints for a new 'Bookmark' entity (url, label, is_favorite). Specify HTTP method, URL path, success status code, and request/response body for each.",
+            "hints": [
+              "Follow the same pattern as notes in src/wellbegun/routers/notes.py.",
+              "Use plural noun: /api/bookmarks.",
+              "POST returns 201, GET/PUT/DELETE return 200, missing resources return 404."
+            ],
+            "solution_reference": "src/wellbegun/routers/notes.py:8-42"
+          },
+          {
+            "task": "Identify the correct HTTP status code for five scenarios: missing resource on GET, successful POST, missing required field, successful PUT, successful DELETE.",
+            "hints": [
+              "404 for missing resources, 201 for successful creation, 422 for validation failures.",
+              "Check the status_code parameters in src/wellbegun/routers/notes.py.",
+              "FastAPI automatically returns 422 when Pydantic validation fails."
+            ],
+            "solution_reference": "src/wellbegun/routers/notes.py:8-42"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz",
+      "title": "Knowledge Check",
+      "type": "quiz",
+      "order": 6,
+      "content_md": "Test your understanding of API design principles as applied in WellBegun.",
+      "metadata": {
+        "questions": [
+          {
+            "question": "Why do REST APIs use nouns in URLs instead of verbs?",
+            "options": [
+              "Verbs are not allowed in URLs",
+              "The HTTP method already provides the verb, so the URL identifies the resource",
+              "Nouns are shorter to type",
+              "Browsers only support noun-based URLs"
+            ],
+            "correct_index": 1,
+            "explanation": "Combining GET + /api/notes means 'retrieve notes.' Putting the verb in the URL would be redundant and inconsistent."
+          },
+          {
+            "question": "What is the purpose of separate NoteCreate and NoteOut schemas?",
+            "options": [
+              "NoteCreate is for the database, NoteOut is for Python",
+              "NoteCreate defines what the client sends; NoteOut defines what the server returns, including server-managed fields like id and timestamps",
+              "NoteCreate is for POST, NoteOut is for GET only",
+              "They are interchangeable"
+            ],
+            "correct_index": 1,
+            "explanation": "The client should not set fields like id, created_at, or is_active -- those are managed by the server. Separate schemas enforce this boundary."
+          },
+          {
+            "question": "What does model_dump(exclude_unset=True) do in the update endpoint?",
+            "options": [
+              "Removes all None values from the dictionary",
+              "Only includes fields the client explicitly provided, preventing accidental overwrites",
+              "Converts the model to a database query",
+              "Excludes the id field from the update"
+            ],
+            "correct_index": 1,
+            "explanation": "If the client sends {\"title\": \"New\"} without content, exclude_unset=True ensures content is not set to None. Only explicitly provided fields are updated."
+          },
+          {
+            "question": "Why does POST /api/notes return 201 instead of 200?",
+            "options": [
+              "201 is faster",
+              "200 means success; 201 specifically means a new resource was created",
+              "FastAPI requires 201 for POST",
+              "200 is only for GET"
+            ],
+            "correct_index": 1,
+            "explanation": "Using precise status codes makes the API more informative. A client can distinguish 'I updated something' (200) from 'I created something new' (201)."
+          },
+          {
+            "question": "What happens if a client sends POST /api/notes with an empty body {}?",
+            "options": [
+              "A note is created with empty title",
+              "The server crashes",
+              "FastAPI returns 422 because the required title field is missing",
+              "The server returns 404"
+            ],
+            "correct_index": 2,
+            "explanation": "NoteCreate requires title: str. FastAPI validates the body against this schema before your code runs. Missing required fields trigger 422."
+          }
+        ]
+      }
+    },
+    {
+      "id": "resources",
+      "title": "Further Reading",
+      "type": "resources",
+      "order": 7,
+      "content_md": "Curated resources for deepening your understanding of API design.",
+      "metadata": {
+        "links": [
+          {
+            "title": "RESTful API Design Best Practices",
+            "url": "https://restfulapi.net/resource-naming/",
+            "type": "tutorial"
+          },
+          {
+            "title": "FastAPI Request Body Documentation",
+            "url": "https://fastapi.tiangolo.com/tutorial/body/",
+            "type": "official-docs"
+          },
+          {
+            "title": "Pydantic Model Documentation",
+            "url": "https://docs.pydantic.dev/latest/concepts/models/",
+            "type": "official-docs"
+          },
+          {
+            "title": "HTTP Status Codes Reference",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status",
+            "type": "official-docs"
+          },
+          {
+            "title": "Microsoft REST API Guidelines",
+            "url": "https://github.com/microsoft/api-guidelines",
+            "type": "reference"
+          }
+        ]
+      }
+    }
+  ]
+}
